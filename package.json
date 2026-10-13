@@ -1,0 +1,17 @@
+{
+  "name": "cloudpipeline-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Incident tracker demo for the CloudPipeline CI/CD project",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "dependencies": {
+    "express": "^5.3.0"
+  }
+}
