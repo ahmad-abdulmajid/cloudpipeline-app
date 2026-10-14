@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CloudPipeline Incident Tracker</title>
+<script src="/app.js" defer></script>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header>
+    <h1>Incident Tracker</h1>
+    <p>Log issues, track investigations, and record resolutions.</p>
+  </header>
+
+  <main>
+    <section aria-labelledby="create-heading">
+      <h2 id="create-heading">Report an incident</h2>
+
+      <form id="incident-form">
+        <p>
+          <label for="title">Title</label><br>
+          <input id="title" name="title" required maxlength="120">
+        </p>
+
+        <p>
+          <label for="description">Description</label><br>
+          <textarea id="description" name="description"
+                    rows="4" maxlength="2000"></textarea>
+        </p>
+
+        <p>
+          <label for="severity">Severity</label><br>
+          <select id="severity" name="severity">
+            <option value="Low">Low</option>
+            <option value="Medium" selected>Medium</option>
+            <option value="High">High</option>
+          </select>
+        </p>
+
+        <button type="submit" disabled>Create incident</button>
+        
+      </form>
+    </section>
+
+    <section aria-labelledby="list-heading">
+      <h2 id="list-heading">Incidents</h2>
+      <p id="feedback" role="status"></p>
+      <div id="incident-list">
+        <p>The incident list will appear here once connected.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Portfolio demo. Use sample data only.
+       Incidents reset when the server restarts.</p>
+  </footer>
+</body>
+</html>
