@@ -34,3 +34,26 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t cloudpipeline-app:${{ github.sha }} .
+
+  check-aws-auth:
+    needs: test-and-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Authenticate to AWS using OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::349326897252:role/pipewright-github-deploy
+          aws-region: eu-central-1
+          allowed-account-ids: '349326897252'
+          role-session-name: CloudPipelineAuthCheck
+          retry-max-attempts: 2
+
+      - name: Confirm AWS identity
+        run: aws sts get-caller-identity
