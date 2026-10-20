@@ -1,3 +1,4 @@
+
 name: CloudPipeline CI
 
 on:
@@ -39,21 +40,39 @@ jobs:
     needs: test-and-build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     permissions:
       id-token: write
       contents: read
 
     steps:
+      - name: Download repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
       - name: Authenticate to AWS using OIDC
         uses: aws-actions/configure-aws-credentials@v6.3.0
         with:
           role-to-assume: arn:aws:iam::349326897252:role/pipewright-github-deploy
           aws-region: eu-central-1
           allowed-account-ids: '349326897252'
-          role-session-name: CloudPipelineAuthCheck
+          role-session-name: CloudPipelineECRPush
           retry-max-attempts: 2
 
       - name: Confirm AWS identity
         run: aws sts get-caller-identity
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: pipewright-app
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" .
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
