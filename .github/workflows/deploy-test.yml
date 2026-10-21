@@ -34,3 +34,16 @@ jobs:
             --cluster pipewright-cluster \
             --services pipewright-app \
             --query 'services[0].{Status:status,TaskDefinition:taskDefinition,Desired:desiredCount,Running:runningCount,Pending:pendingCount}'
+
+      - name: Stop Fargate after testing
+        if: ${{ always() }}
+        timeout-minutes: 2
+        run: |
+          aws ecs update-service \
+            --cluster pipewright-cluster \
+            --service pipewright-app \
+            --desired-count 0
+
+          aws ecs wait services-stable \
+            --cluster pipewright-cluster \
+            --services pipewright-app
