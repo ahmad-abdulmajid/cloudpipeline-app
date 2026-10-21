@@ -76,3 +76,33 @@ jobs:
         run: |
           docker build -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" .
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+      - name: Register new ECS task definition
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE="$ECR_REGISTRY/pipewright-app:$IMAGE_TAG"
+
+          aws ecs describe-task-definition \
+            --task-definition pipewright-app \
+            --query taskDefinition \
+            --output json |
+          jq --arg IMAGE "$IMAGE" \
+            '{
+              family,
+              executionRoleArn,
+              taskRoleArn,
+              networkMode,
+              containerDefinitions,
+              volumes,
+              requiresCompatibilities,
+              cpu,
+              memory,
+              runtimePlatform
+            } | with_entries(select(.value != null)) |
+            .containerDefinitions[0].image = $IMAGE' \
+            > task-definition-new.json
+
+          aws ecs register-task-definition \
+            --cli-input-json file://task-definition-new.json
