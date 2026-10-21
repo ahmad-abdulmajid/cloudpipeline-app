@@ -27,3 +27,10 @@ jobs:
 
       - name: Confirm AWS identity
         run: aws sts get-caller-identity
+
+      - name: Inspect ECS service
+        run: |
+          aws ecs describe-services \
+            --cluster pipewright-cluster \
+            --services pipewright-app \
+            --query 'services[0].{Status:status,TaskDefinition:taskDefinition,Desired:desiredCount,Running:runningCount,Pending:pendingCount}'
