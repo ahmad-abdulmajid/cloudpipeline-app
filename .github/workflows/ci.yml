@@ -104,5 +104,20 @@ jobs:
             .containerDefinitions[0].image = $IMAGE' \
             > task-definition-new.json
 
-          aws ecs register-task-definition \
-            --cli-input-json file://task-definition-new.json
+
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition-new.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "Registered task definition: $NEW_TASK_DEF_ARN"
+          echo "TASK_DEFINITION_ARN=$NEW_TASK_DEF_ARN" >> "$GITHUB_ENV"
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster pipewright-cluster \
+            --service pipewright-app \
+            --task-definition "$TASK_DEFINITION_ARN" \
+            --desired-count 0 \
+            --query 'service.{TaskDefinition:taskDefinition,Desired:desiredCount}'
