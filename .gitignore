@@ -9,3 +9,5 @@ node_modules/
 *.tfvars.json
 npm-debug.log*
 *Zone.Identifier
+# Generated ECS deployment files
+task-definition-v*.json
