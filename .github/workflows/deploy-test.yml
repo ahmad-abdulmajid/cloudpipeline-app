@@ -1,8 +1,11 @@
-
 name: CloudPipeline Deployment Test
 
 on:
   workflow_dispatch:
+
+concurrency:
+  group: pipewright-ecs-deployment
+  cancel-in-progress: false
 
 permissions:
   contents: read
