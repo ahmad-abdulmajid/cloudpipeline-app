@@ -110,3 +110,138 @@ Confirmed that the application responded successfully.
 I deployed a containerized Node.js application to AWS ECS Fargate. I registered a new ECS task definition referencing the Docker image produced by GitHub Actions and stored in ECR. I updated the ECS service, started one task, and verified the application returned HTTP 200 from its public health endpoint. Finally, I scaled the service back to zero to control costs.
 
 **What could go wrong?** A task might fail because of incorrect networking, insufficient IAM permissions, a missing image, or an unhealthy application.
+
+## Milestone: ECS Health-Check Failure and Rollback Experiment
+
+### Goal
+Verify that AWS ECS detects an unhealthy application deployment and investigate whether its deployment circuit breaker automatically rolls back to the previous healthy revision.
+
+### Concepts (in my words)
+- **Container health check:** ECS periodically runs a command to determine whether a container is functioning correctly.
+- **Rolling deployment:** ECS can start a new application version while keeping the previous version running to reduce downtime.
+- **Circuit breaker:** A mechanism that stops an ECS deployment after enough task failures.
+- **Automatic rollback:** Returning to a previously successful deployment after a new deployment fails.
+
+### What I Built and Tested
+1. Confirmed task definition revision 9 was healthy and running.
+2. Created a temporary task definition JSON based on revision 9.
+3. Replaced the container health-check command with `["CMD-SHELL", "exit 1"]` to simulate a broken application.
+4. Registered the configuration as task definition revision 10.
+5. Updated the ECS service to deploy revision 10 with a desired task count of 1.
+6. Inspected ECS deployments, service events, and container health.
+7. Confirmed ECS detected the health-check failure and stopped the unhealthy task.
+8. Scaled the service down to zero to control costs.
+9. Restored the service's selected task definition to healthy revision 9.
+
+### Commands and Code With Reasons
+
+**Register the broken task definition:**
+
+```bash
+aws ecs register-task-definition \
+  --cli-input-json file://task-definition-broken.json \
+  --region eu-central-1 \
+  --profile cloudpipeline
+```
+
+Reason: Create a deliberately unhealthy version without modifying the working revision.
+
+**Deploy the broken revision:**
+
+```bash
+aws ecs update-service \
+  --cluster pipewright-cluster \
+  --service pipewright-app \
+  --task-definition pipewright-app:10 \
+  --region eu-central-1 \
+  --profile cloudpipeline
+```
+
+Reason: Test ECS failure detection with the deployment circuit breaker enabled.
+
+**Inspect ECS service events:**
+
+```bash
+aws ecs describe-services \
+  --cluster pipewright-cluster \
+  --services pipewright-app \
+  --region eu-central-1 \
+  --profile cloudpipeline
+```
+
+Reason: Observe deployment progress and identify task health-check failures.
+
+**Stop Fargate tasks:**
+
+```bash
+aws ecs update-service \
+  --cluster pipewright-cluster \
+  --service pipewright-app \
+  --desired-count 0 \
+  --region eu-central-1 \
+  --profile cloudpipeline
+```
+
+Reason: Prevent unnecessary Fargate compute charges after testing.
+
+**Restore the healthy task definition:**
+
+```bash
+aws ecs update-service \
+  --cluster pipewright-cluster \
+  --service pipewright-app \
+  --task-definition pipewright-app:9 \
+  --desired-count 0 \
+  --region eu-central-1 \
+  --profile cloudpipeline
+```
+
+Reason: Ensure the service does not use the intentionally broken configuration in a future deployment.
+
+### Result and Evidence
+
+**Confirmed successful:**
+- Revision 9 was healthy before testing.
+- Revision 10 started deploying.
+- ECS reported: `(task a73de9ea82fa47c0a0f8eaf91152ba11) failed container health checks.`
+- ECS stopped the unhealthy task.
+- Final service state: Desired 0, Running 0, Pending 0.
+- Service task definition restored to revision 9.
+
+**Not yet confirmed:**
+- The deployment circuit breaker did not report a failed rollout before the experiment was stopped.
+- Automatic rollback to revision 9 was therefore not demonstrated.
+
+### Problems and Fixes
+
+**Problem 1: Task health initially showed UNKNOWN.**
+
+Cause: ECS had not yet reported a definitive health-check result.
+
+Resolution: Inspected subsequent service events, which confirmed the container failed health checks.
+
+**Problem 2: Invalid service deployment ARN.**
+
+Cause: An `ecs-svc/...` deployment identifier was incorrectly used as a service deployment ARN.
+
+Resolution: Identified the mismatch. No infrastructure configuration change was necessary.
+
+**Problem 3: AccessDenied for ecs:ListServiceDeployments.**
+
+Cause: The CLI user's IAM policy did not authorize this optional diagnostic operation.
+
+Resolution: Avoided unnecessary IAM permission changes and used the existing `ecs:DescribeServices` permission.
+
+**Problem 4: Automatic rollback remained unverified.**
+
+Cause: The experiment was stopped before ECS reported that the deployment had failed and rolled back.
+
+Next action: Repeat the rollback experiment with controlled monitoring, sufficient time to reach the failure threshold, and a defined cost limit.
+
+### Interview Answer
+
+I tested failure detection in AWS ECS by creating a task definition with an intentionally failing container health check. I deployed it through the ECS service while retaining the previously healthy revision. ECS detected the health-check failure and stopped the unhealthy task, demonstrating that the health monitoring was working. I stopped the experiment before automatic rollback was confirmed, scaled the service to zero to manage costs, and restored the healthy task definition.
+
+### What Could Go Wrong?
+
+A deployment can repeatedly launch failing replacement tasks, increasing costs while never reaching a healthy state. Deployment events and failure thresholds must be monitored, and the service should be returned to a safe configuration when testing ends.
