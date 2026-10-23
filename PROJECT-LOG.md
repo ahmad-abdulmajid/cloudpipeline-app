@@ -245,3 +245,141 @@ I tested failure detection in AWS ECS by creating a task definition with an inte
 ### What Could Go Wrong?
 
 A deployment can repeatedly launch failing replacement tasks, increasing costs while never reaching a healthy state. Deployment events and failure thresholds must be monitored, and the service should be returned to a safe configuration when testing ends.
+
+## Milestone: Automatic ECS Rollback Verified
+
+### Goal
+
+Demonstrate that AWS ECS detects a failed application deployment, triggers its deployment circuit breaker, and rolls back to a previously successful service revision.
+
+### Concepts (in my words)
+
+- **Task definition revision:** A numbered version of the container configuration that ECS can use when launching tasks.
+- **Container health check:** A command ECS runs to determine whether an application container is functioning correctly.
+- **Rolling deployment:** A deployment strategy that can temporarily run both old and new application tasks.
+- **Deployment circuit breaker:** An ECS mechanism that declares a deployment failed when its configured failure threshold is reached.
+- **Automatic rollback:** ECS restoring a previously successful deployment after a failed deployment.
+
+### What I Built and Tested
+
+1. Fixed the GitHub Actions CD workflow to retrieve the task definition selected by the ECS service rather than the latest registered revision.
+2. Confirmed both GitHub Actions jobs passed.
+3. Verified that task definition revision 12 contained the correct `/health` check.
+4. Started revision 12 and confirmed its ECS deployment was `COMPLETED` and its container health was `HEALTHY`.
+5. Registered revision 13 with an intentionally failing health check: `["CMD-SHELL", "exit 1"]`.
+6. Deployed revision 13 and observed three tasks fail container health checks.
+7. Retrieved the ECS deployment-history record and confirmed that the circuit breaker triggered and a rollback completed.
+8. Returned the ECS service to revision 12 with desired, running, and pending counts all at zero.
+
+### Commands and Code With Reasons
+
+**Inspect the current ECS service:**
+
+```bash
+aws ecs describe-services \
+  --cluster pipewright-cluster \
+  --services pipewright-app \
+  --region eu-central-1 \
+  --profile cloudpipeline
+```
+
+Reason: Check the selected task definition, deployment states, task counts, and recent service events.
+
+**Inspect an individual task:**
+
+```bash
+aws ecs describe-tasks \
+  --cluster pipewright-cluster \
+  --tasks TASK_ID \
+  --region eu-central-1 \
+  --profile cloudpipeline
+```
+
+Reason: Identify an unhealthy container and its recorded failure reason.
+
+**Retrieve deployment history:**
+
+```bash
+aws ecs list-service-deployments \
+  --cluster pipewright-cluster \
+  --service pipewright-app \
+  --region eu-central-1 \
+  --profile cloudpipeline
+```
+
+Reason: Obtain the actual service deployment ARN and historical status.
+
+**Inspect the rollback evidence:**
+
+```bash
+aws ecs describe-service-deployments \
+  --service-deployment-arns arn:aws:ecs:eu-central-1:349326897252:service-deployment/pipewright-cluster/pipewright-app/UkWSR_SFT2u2VoODG1R3Z \
+  --region eu-central-1 \
+  --profile cloudpipeline
+```
+
+Reason: Verify the circuit-breaker result using AWS's deployment record.
+
+### Result and Evidence
+
+On October 23, 2026, AWS returned:
+
+```json
+{
+  "status": "ROLLBACK_SUCCESSFUL",
+  "statusReason": "Service deployment rolled back because the circuit breaker threshold was exceeded.",
+  "deploymentCircuitBreaker": {
+    "status": "TRIGGERED",
+    "failureCount": 3,
+    "threshold": 3
+  }
+}
+```
+
+The rollback record identified service revision `8564835179907107478` as the recovery target. This was the previously successful deployment associated with healthy task definition revision 12.
+
+**Important qualification:** During troubleshooting, I also manually scaled the service to zero and later reselected revision 12. The AWS record confirms the circuit breaker triggered and ECS completed a rollback; the final service state was also affected by manual actions.
+
+Final verified state:
+
+- Task definition: `pipewright-app:12`
+- Desired tasks: 0
+- Running tasks: 0
+- Pending tasks: 0
+
+### Problems and Fixes (Root Cause)
+
+**Problem 1: A broken health check propagated into revision 11.**
+
+Root cause: GitHub Actions copied the latest registered ECS task definition and changed only its Docker image. Because the source revision was broken, the new revision inherited `exit 1`.
+
+Fix: Updated the workflow to retrieve the task definition selected by the ECS service. Verified that the next pipeline run registered healthy revision 12.
+
+**Problem 2: The deployment remained IN_PROGRESS after unhealthy tasks were stopped.**
+
+Observation: ECS stopped failed tasks and launched replacements before completing failure evaluation. Repeatedly checking service status did not establish whether the circuit breaker had triggered.
+
+Fix: Used ECS deployment history as the authoritative record and confirmed `failureCount: 3`, `threshold: 3`, and `ROLLBACK_SUCCESSFUL`.
+
+**Problem 3: Invalid service deployment ARN.**
+
+Root cause: An `ecs-svc/...` deployment ID was incorrectly treated as a service deployment ARN.
+
+Fix: Retrieved actual ARNs using `aws ecs list-service-deployments`.
+
+**Problem 4: AccessDenied when reading deployment history.**
+
+Root cause: The `cloudpipeline-user` IAM identity lacked `ecs:ListServiceDeployments` and related read permissions. It also could not run `iam:ListUserPolicies`.
+
+Fix: Used the AWS Console to add a narrowly scoped inline policy, `PipewrightECSDeploymentReadOnly`, granting deployment-history read access without IAM administration privileges.
+
+**Problem 5: Terraform provider did not expose newer circuit-breaker options.**
+
+Observation: The installed AWS provider exposed `enable` and `rollback` inside the `deployment_circuit_breaker` block, while the ECS API returned additional configuration fields.
+
+Resolution: Kept Terraform's supported configuration unchanged and verified the actual AWS deployment behavior instead of adding unsupported arguments.
+
+### Interview Answer
+
+I created an intentionally unhealthy ECS task definition to test how the deployment circuit breaker handles failed releases. ECS detected three container health-check failures and stopped the affected tasks. I verified that the circuit breaker was triggered and the
+
