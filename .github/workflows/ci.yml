@@ -89,7 +89,11 @@ jobs:
           IMAGE="$ECR_REGISTRY/pipewright-app:$IMAGE_TAG"
 
           aws ecs describe-task-definition \
-            --task-definition pipewright-app \
+            --task-definition "$(aws ecs describe-services \
+              --cluster pipewright-cluster \
+              --services pipewright-app \
+              --query 'services[0].taskDefinition' \
+              --output text)" \
             --query taskDefinition \
             --output json |
           jq --arg IMAGE "$IMAGE" \
