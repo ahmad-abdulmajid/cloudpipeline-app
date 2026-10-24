@@ -136,13 +136,29 @@ jobs:
 
       - name: Stop Fargate after testing
         if: ${{ always() && steps.start_fargate.outcome != 'skipped' }}
-        timeout-minutes: 2
+        timeout-minutes: 5
         run: |
           aws ecs update-service \
             --cluster pipewright-cluster \
             --service pipewright-app \
             --desired-count 0
 
-          aws ecs wait services-stable \
-            --cluster pipewright-cluster \
-            --services pipewright-app
+          for attempt in $(seq 1 30); do
+            COUNTS=$(aws ecs describe-services \
+              --cluster pipewright-cluster \
+              --services pipewright-app \
+              --query 'services[0].[desiredCount,runningCount,pendingCount]' \
+              --output text)
+
+            echo "ECS task counts: $COUNTS"
+
+            if [ "$COUNTS" = "$(printf '0\t0\t0')" ]; then
+              echo "Cleanup confirmed: ECS has zero tasks."
+              exit 0
+            fi
+
+            sleep 5
+          done
+
+          echo "ERROR: ECS tasks did not reach zero."
+          exit 1
