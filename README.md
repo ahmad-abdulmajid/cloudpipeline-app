@@ -14,7 +14,7 @@ The project uses a Node.js and Express application with automated tests and a `/
 
 When code is pushed to the `main` branch, GitHub Actions tests the application, builds a Docker image, authenticates to AWS using OIDC, pushes the image to Amazon ECR, and registers a new ECS task definition revision.
 
-To control costs, the ECS service normally has a desired task count of zero. A separate manual deployment-test workflow temporarily starts the application, performs a health check, and stops the service afterward.
+To control costs, the ECS service normally has a desired task count of zero. After every successful push to `main`, the pipeline temporarily starts a Fargate task, verifies the deployed image, performs a live `/health` smoke test, and scales the service back to zero. A separate manually triggered deployment-test workflow is also available.
 
 ## Architecture
 
@@ -30,7 +30,9 @@ flowchart TD
     H --> I["Register ECS Task Definition Revision"]
     I --> J["Update ECS Service — Desired 0"]
 
-    K["Manual Deployment Test"] --> L["Scale ECS Service to 1"]
+    J --> K["Automatic Deployment Test"]
+    K --> L["Scale ECS Service to 1"]
+    S["Optional Manual Deployment Test"] --> L
     L --> M["ECS Fargate Container"]
     M --> N["Health Check + HTTP Smoke Test"]
     N --> O["Scale ECS Service to 0"]
@@ -61,41 +63,52 @@ flowchart TD
 
 ### 1. Automatic CI/CD — `ci.yml`
 
-Triggered by:
+Triggered by pushes and pull requests targeting `main`.
 
-- Pushes to `main`
-- Pull requests targeting `main`
+The workflow contains three jobs:
 
-The workflow:
+**Job 1: `test-and-build`**
 
 1. Checks out the repository.
 2. Installs Node.js dependencies.
 3. Runs automated tests.
 4. Builds the Docker image.
-5. On pushes to `main`, authenticates to AWS using OIDC.
-6. Pushes the Docker image to ECR using the Git commit SHA as its tag.
-7. Retrieves the task definition selected by the ECS service.
-8. Registers a new task definition revision with the updated image.
-9. Updates the ECS service while keeping the desired task count at zero.
 
-AWS publishing and service updates are restricted to pushes to `main`; pull requests run validation without deploying to AWS.
+**Job 2: `check-aws-auth`**
 
-### 2. Manual Deployment Test — `deploy-test.yml`
-
-Triggered manually using GitHub Actions `workflow_dispatch`.
-
-The workflow:
+Runs after successful tests, only for pushes to `main`.
 
 1. Authenticates to AWS using OIDC.
-2. Checks that ECS is initially scaled down.
-3. Starts one Fargate task.
-4. Waits for deployment stability.
-5. Retrieves the task's public IP address.
-6. Tests the `/health` endpoint.
-7. Checks for a successful HTTP response.
-8. Scales the service back to zero, including during cleanup after a failure.
+2. Pushes the Docker image to ECR using the Git commit SHA.
+3. Retrieves the task definition selected by the ECS service.
+4. Registers a new task definition revision with the updated image.
+5. Updates the ECS service, initially keeping desired count at zero.
 
-The manual trigger is a deliberate cost-control decision.
+**Job 3: `deployment-test`**
+
+Runs automatically after the AWS publishing job succeeds.
+
+1. Authenticates using OIDC.
+2. Verifies that ECS is initially stopped.
+3. Confirms the service's Docker image matches the current commit SHA.
+4. Starts one ECS Fargate task.
+5. Waits for ECS deployment stability.
+6. Retrieves the running task's public IP address.
+7. Performs an HTTP `/health` smoke test.
+8. Checks that the response contains `"status": "ok"`.
+9. Attempts cleanup and verifies that desired, running, and pending counts return to zero.
+
+Pull requests run CI validation without AWS deployment.
+
+Cleanup is best-effort; runner failures or AWS outages may still require manual intervention.
+
+### 2. Optional Manual Deployment Test — `deploy-test.yml`
+
+Triggered manually using `workflow_dispatch`.
+
+This separate workflow performs a live Fargate deployment test when additional verification is needed, without requiring a new application push.
+
+It uses OIDC authentication, ECS stability checks, the `/health` smoke test, and best-effort cleanup.
 
 ## Security Design
 

@@ -383,3 +383,134 @@ Resolution: Kept Terraform's supported configuration unchanged and verified the 
 
 I created an intentionally unhealthy ECS task definition to test how the deployment circuit breaker handles failed releases. ECS detected three container health-check failures and stopped the affected tasks. I verified that the circuit breaker was triggered and the
 
+## Milestone: Fully Automated CI/CD Deployment and Health Verification
+
+### Goal
+
+Complete an automated CI/CD pipeline that tests, builds, publishes, deploys, and verifies the Node.js application on AWS ECS Fargate after successful pushes to `main`.
+
+### Concepts (in my words)
+
+- **Job dependency:** GitHub Actions uses `needs` to ensure a job starts only after its required job succeeds.
+- **Continuous deployment:** Automatically releasing application changes after successful validation.
+- **Smoke test:** A quick HTTP request that verifies the deployed application is responding correctly.
+- **Best-effort cleanup:** An automated attempt to stop temporary resources after testing, including when an earlier step fails.
+
+### What I Built
+
+Extended `.github/workflows/ci.yml` with a third job, `deployment-test`.
+
+The automated pipeline now follows this sequence:
+
+1. `test-and-build`: Install dependencies, run Node.js tests, and build the Docker image.
+2. `check-aws-auth`: Authenticate to AWS using OIDC, push the image to ECR, register a new task definition revision, and update the ECS service.
+3. `deployment-test`: Verify the deployed image matches the current Git commit, start Fargate, wait for ECS stability, test `/health`, and stop Fargate afterward.
+
+The existing manually triggered `deploy-test.yml` remains available for controlled testing.
+
+### Commands and Code With Reasons
+
+**Job dependency:**
+
+```yaml
+deployment-test:
+  needs: check-aws-auth
+  if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+```
+
+Reason: Run live deployment testing only after successful publishing on `main`.
+
+**Verify the application image:**
+
+```bash
+case "$IMAGE" in
+  *":$GITHUB_SHA") echo "Correct commit image confirmed." ;;
+  *) echo "ERROR: ECS image does not match this commit."; exit 1 ;;
+esac
+```
+
+Reason: Ensure the live test uses the image associated with the current pipeline run.
+
+**Verify application health:**
+
+```bash
+curl --fail "http://$PUBLIC_IP:3000/health"
+```
+
+The workflow additionally checks that the JSON response contains `"status": "ok"`.
+
+Reason: Verify that the actual running application responds successfully.
+
+**Scale down and verify cleanup:**
+
+```bash
+aws ecs update-service \
+  --cluster pipewright-cluster \
+  --service pipewright-app \
+  --desired-count 0
+```
+
+The cleanup job checks the desired, running, and pending task counts until they reach zero.
+
+Reason: Reduce AWS costs and avoid leaving unnecessary Fargate tasks running after tests.
+
+### Result and Evidence
+
+- GitHub Actions `deployment-test` job completed successfully in 2 minutes and 32 seconds.
+- OIDC authentication succeeded.
+- The service image was verified against the Git commit.
+- ECS successfully started and stabilized the Fargate application.
+- The `/health` smoke test passed.
+- The automatic cleanup step completed.
+- An independent AWS CLI check confirmed Desired 0, Running 0, and Pending 0.
+
+This demonstrates successful automatic live deployment verification following a push to `main`.
+
+### Problems and Fixes (Root Cause)
+
+**Problem: The original pipeline published images but did not run a live deployment test automatically.**
+
+Root cause: The automatic workflow set ECS desired count to zero, while the live deployment-test workflow required manual triggering.
+
+Fix: Added `deployment-test` as a third dependent job in `ci.yml`.
+
+**Problem: Cleanup could remain waiting for ECS service stability even after tasks stopped.**
+
+Root cause: The ECS `services-stable` waiter checks service deployment stability, not only task shutdown.
+
+Fix: Replaced the cleanup waiter with repeated checks of desired, running, and pending task counts.
+
+**Problem: New deployments must be matched to the correct commit.**
+
+Risk: The service might reference an unexpected image revision.
+
+Fix: Added an image-tag verification step using `GITHUB_SHA` before starting Fargate.
+
+### Limitations and Future Improvements
+
+- Fargate and public IPv4 usage incur charges during each live deployment test.
+- Cleanup is best-effort and cannot guarantee recovery from runner termination or AWS outages.
+- The workflow validates healthy deployments, but rollback behavior was demonstrated separately through the ECS deployment circuit-breaker experiment.
+- A production deployment would require stronger network isolation, monitoring, and recovery controls.
+
+### Interview Answer
+
+I built a three-job GitHub Actions pipeline that tests a Node.js application, builds its Docker image, and publishes it to Amazon ECR using temporary AWS credentials obtained through OIDC. After publishing, the pipeline registers a new ECS task definition revision and starts a Fargate task. It verifies the running application using an HTTP `/health` smoke test and automatically scales the service back to zero to control costs. I also tested ECS's deployment circuit breaker separately and verified a recorded successful rollback after three health-check failures.
+
+### Three Likely Interview Questions
+
+**Q: How do you prevent deployment before tests succeed?**
+
+A: GitHub Actions uses `needs` so downstream jobs only run after their dependencies succeed.
+
+**Q: How do you verify the correct image is deployed?**
+
+A: The workflow compares the ECS task definition's Docker image tag against the current Git commit SHA.
+
+**Q: How do you prevent unnecessary Fargate charges?**
+
+A: The workflow scales the ECS service to zero after testing and checks that all running and pending tasks have stopped.
+
+### What Could Go Wrong?
+
+If a GitHub runner stops unexpectedly or loses AWS access, cleanup might not execute. The remaining ECS tasks would require monitoring and manual intervention to prevent unnecessary costs.
