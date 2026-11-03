@@ -109,3 +109,16 @@ Simple definitions of the concepts used in this project.
 - **Monitoring:** Observing system behavior, performance, and failures.
 - **Deployment Evidence:** Logs, command outputs, or screenshots demonstrating that a deployment operation occurred.
 - **Infrastructure Cleanup:** Stopping or deleting unnecessary cloud resources to control costs and reduce exposure.
+
+## Kubernetes
+
+- **Kubernetes (K8s):** An open-source platform for orchestrating containerized applications.
+- **Cluster:** A group of Nodes managed by Kubernetes.
+- **Node:** A machine that runs Kubernetes workloads.
+- **Pod:** The smallest deployable Kubernetes unit, containing one or more containers.
+- **Control Plane:** The components responsible for managing the Kubernetes cluster.
+- **kubectl:** The command-line interface used to communicate with Kubernetes.
+- **Minikube:** A tool for creating local Kubernetes clusters.
+- **Kind:** A tool for running Kubernetes clusters using Docker containers.
+- **Namespace:** A logical grouping of Kubernetes resources.
+- **Docker Driver:** The Minikube configuration that uses Docker to run a local cluster.

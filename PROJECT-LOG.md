@@ -514,3 +514,64 @@ A: The workflow scales the ECS service to zero after testing and checks that all
 ### What Could Go Wrong?
 
 If a GitHub runner stops unexpectedly or loses AWS access, cleanup might not execute. The remaining ECS tasks would require monitoring and manual intervention to prevent unnecessary costs.
+
+## Phase 2 - Day 1: Kubernetes Fundamentals and Local Setup
+
+### Goal
+Understand Kubernetes and establish a working local cluster without affecting the existing AWS ECS deployment.
+
+### Concepts (in my words)
+- **Kubernetes:** A platform that manages containerized applications, including deployment, scaling, and recovery.
+- **Cluster:** A collection of Nodes managed by Kubernetes.
+- **Node:** A machine that runs Kubernetes workloads.
+- **Pod:** The smallest deployable unit in Kubernetes, containing one or more containers.
+- **kubectl:** A command-line tool for communicating with Kubernetes.
+- **Minikube:** A tool for running a local Kubernetes cluster.
+- **Namespace:** A logical grouping of Kubernetes resources.
+
+### What I built
+- Installed Minikube v1.39.0.
+- Used the existing Docker Desktop environment.
+- Started a single-node Kubernetes cluster.
+- Verified the Node became Ready.
+- Confirmed all eight system Pods were running.
+
+### Commands and reasons
+
+```bash
+docker ps
+# Verify Docker Engine connectivity.
+
+kubectl version --client
+# Verify kubectl installation.
+
+minikube version
+# Verify Minikube installation.
+
+minikube start --driver=docker
+# Start a local Kubernetes cluster using Docker.
+
+kubectl get nodes
+# Check Kubernetes Node status.
+
+kubectl wait --for=condition=Ready node/minikube --timeout=180s
+# Wait for the Node to become Ready.
+
+kubectl get pods -n kube-system
+# Verify Kubernetes system components.
+```
+
+### Result and evidence
+- Docker Engine: 29.9.2
+- kubectl: 1.36.1
+- Minikube: 1.39.0
+- Kubernetes: 1.37.0
+- Node: Ready
+- System Pods: 8 running, zero restarts
+- Additional AWS infrastructure: None
+
+### Problems and fixes
+The Node initially reported `NotReady` during cluster initialization. Waiting for the Ready condition resolved the issue without requiring a restart.
+
+### What I learned
+Kubernetes and ECS both orchestrate containers. Kubernetes uses Pods, Nodes, Deployments, and Services, while ECS uses Tasks, Task Definitions, and Services. Minikube allows me to learn Kubernetes locally without provisioning paid AWS infrastructure.
