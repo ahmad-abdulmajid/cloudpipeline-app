@@ -122,3 +122,12 @@ Simple definitions of the concepts used in this project.
 - **Kind:** A tool for running Kubernetes clusters using Docker containers.
 - **Namespace:** A logical grouping of Kubernetes resources.
 - **Docker Driver:** The Minikube configuration that uses Docker to run a local cluster.
+- **Kubernetes Service:** A stable network endpoint for accessing a set of Pods.
+- **ClusterIP:** A Service type that exposes an application internally within Kubernetes.
+- **EndpointSlice:** A Kubernetes resource that tracks the network endpoints available behind a Service.
+- **Selector:** A label-based rule used to identify matching Kubernetes resources.
+- **Port forwarding:** A temporary connection between a local port and a Kubernetes resource.
+- **Readiness probe:** A health check that determines whether a container can receive traffic.
+- **Liveness probe:** A health check that can trigger a container restart after repeated failures.
+- **Rolling update:** A controlled process for replacing application Pods with an updated configuration.
+- **Rollout:** The process of deploying or updating a Kubernetes workload.

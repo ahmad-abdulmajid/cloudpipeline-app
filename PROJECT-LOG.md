@@ -641,3 +641,71 @@ Kubernetes Deployments manage application replicas through ReplicaSets. Pods run
 ### Interview answer
 I extended CloudPipeline with a second deployment option using local Kubernetes. I created a dedicated namespace and Deployment, reused the existing Docker image, and loaded it into Minikube. Kubernetes started the Node.js application inside a Pod, and I verified its status and startup logs. This allows me to compare Kubernetes orchestration with AWS ECS without introducing additional AWS infrastructure costs.
 
+## Kubernetes Phase 2 — Day 3: Networking and Health Checks
+
+### Goal
+Expose the Node.js application internally using a Kubernetes Service, verify HTTP connectivity, and configure readiness and liveness probes.
+
+### Concepts (in my words)
+- **Service:** A stable network endpoint that directs traffic to matching Pods.
+- **ClusterIP:** An internal Service address that isn't directly accessible from outside Kubernetes.
+- **Selector:** Connects a Service to Pods using matching labels.
+- **Port forwarding:** Creates a temporary connection from my computer to an application inside Kubernetes.
+- **Readiness probe:** Checks whether a container is ready to receive traffic.
+- **Liveness probe:** Detects unhealthy containers and allows Kubernetes to restart them.
+- **Rolling update:** Kubernetes gradually replaces old Pods with updated ones.
+
+### What I built
+- Created `k8s/service.yaml` with a ClusterIP Service.
+- Configured Service port 80 to forward traffic to the application's port 3000.
+- Verified that the Service identified the application Pod.
+- Accessed `/health` through local port 8080.
+- Added HTTP readiness and liveness probes to `k8s/deployment.yaml`.
+
+### Commands and reasons
+
+```bash
+minikube kubectl -- apply -f k8s/service.yaml
+```
+Created the Service.
+
+```bash
+minikube kubectl -- get services -n cloudpipeline
+minikube kubectl -- get endpoints cloudpipeline-service -n cloudpipeline
+```
+Verified the Service and its application endpoint.
+
+```bash
+minikube kubectl -- port-forward service/cloudpipeline-service 8080:80 -n cloudpipeline
+curl -i http://127.0.0.1:8080/health
+```
+Established local connectivity and tested the application.
+
+```bash
+minikube kubectl -- apply --dry-run=client -f k8s/deployment.yaml
+minikube kubectl -- apply -f k8s/deployment.yaml
+minikube kubectl -- rollout status deployment/cloudpipeline-app -n cloudpipeline --timeout=120s
+```
+Validated, applied, and verified the updated Deployment.
+
+```bash
+minikube kubectl -- describe deployment cloudpipeline-app -n cloudpipeline
+```
+Confirmed both probes were configured.
+
+### Result and evidence
+- Service created successfully with internal IP `10.105.189.214`.
+- Service endpoint pointed to the application Pod on port 3000.
+- `/health` returned HTTP 200 OK.
+- Readiness and liveness probes were confirmed.
+- Deployment rolled out successfully.
+
+### Problems and fixes
+No configuration failures encountered during this milestone.
+
+### Interview answer
+I deployed my Node.js application to local Kubernetes using Minikube. I created a ClusterIP Service that routes traffic to the application Pods using labels and selectors. I verified connectivity using port forwarding and the `/health` endpoint. I also configured readiness and liveness probes to control traffic routing and support automatic container recovery.
+
+### What could go wrong?
+If the Service selector doesn't match the Pod labels, the Service won't have matching endpoints and traffic won't reach the application. Incorrect health-check paths or overly aggressive probe settings can also cause availability problems.
+
