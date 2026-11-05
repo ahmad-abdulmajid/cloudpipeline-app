@@ -1,0 +1,80 @@
+
+name: Kubernetes CI
+
+on:
+  push:
+    branches:
+      - main
+      - kubernetes-ci-test
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kubernetes-test:
+    name: Test application on Kubernetes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t cloudpipeline-app:local .
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1.12.0
+
+      - name: Load Docker image into Kind
+        run: kind load docker-image cloudpipeline-app:local
+
+      - name: Deploy application to Kubernetes
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+
+      - name: Wait for deployment
+        run: |
+          kubectl rollout status deployment/cloudpipeline-app \
+            -n cloudpipeline --timeout=120s
+
+      - name: Check Kubernetes resources
+        run: |
+          kubectl get nodes
+          kubectl get pods -n cloudpipeline
+          kubectl get services -n cloudpipeline
+
+      - name: Smoke test application health
+        run: |
+          kubectl port-forward \
+            service/cloudpipeline-service \
+            8080:80 -n cloudpipeline > /tmp/port-forward.log 2>&1 &
+          PF_PID=$!
+          trap 'kill "$PF_PID" 2>/dev/null || true' EXIT
+
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --show-error \
+              http://127.0.0.1:8080/health; then
+              echo "Health check passed!"
+              exit 0
+            fi
+            echo "Waiting for application..."
+            sleep 2
+          done
+
+          echo "Health check failed!"
+          cat /tmp/port-forward.log
+          exit 1
+
+      - name: Show diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get pods -n cloudpipeline
+          kubectl describe pods -n cloudpipeline
+          kubectl logs deployment/cloudpipeline-app \
+            -n cloudpipeline --tail=100
