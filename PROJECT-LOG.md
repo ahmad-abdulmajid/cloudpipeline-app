@@ -575,3 +575,69 @@ The Node initially reported `NotReady` during cluster initialization. Waiting fo
 
 ### What I learned
 Kubernetes and ECS both orchestrate containers. Kubernetes uses Pods, Nodes, Deployments, and Services, while ECS uses Tasks, Task Definitions, and Services. Minikube allows me to learn Kubernetes locally without provisioning paid AWS infrastructure.
+
+## Phase 2 - Day 2: Deploying CloudPipeline to Kubernetes
+
+### Goal
+Deploy the existing CloudPipeline Node.js application to a local Kubernetes cluster without modifying the AWS ECS pipeline.
+
+### Concepts (in my words)
+- **Namespace:** Organizes Kubernetes resources within a cluster.
+- **Deployment:** Defines how many application Pods should run and which image they use.
+- **ReplicaSet:** Maintains the number of Pods requested by a Deployment.
+- **Pod:** Runs our application container inside Kubernetes.
+- **Image pull policy:** Controls whether Kubernetes downloads an image or uses one already available locally.
+
+### What I built
+- Created `k8s/namespace.yaml` for the `cloudpipeline` namespace.
+- Created `k8s/deployment.yaml` with one replica.
+- Reused the existing Node.js application and Dockerfile.
+- Built the Docker image locally.
+- Loaded the image into Minikube.
+- Deployed the application and inspected its Pod and logs.
+
+### Commands and code with reasons
+
+```bash
+minikube kubectl -- apply -f k8s/namespace.yaml
+# Create the application namespace.
+
+docker build -t cloudpipeline-app:local .
+# Package the existing application.
+
+minikube image load cloudpipeline-app:local
+# Make the image available inside Minikube.
+
+minikube image ls | grep cloudpipeline-app
+# Verify the image is available.
+
+minikube kubectl -- apply -f k8s/deployment.yaml
+# Create the application Deployment.
+
+minikube kubectl -- get pods -n cloudpipeline
+# Check Pod status.
+
+minikube kubectl -- logs deployment/cloudpipeline-app -n cloudpipeline
+# Inspect application startup logs.
+```
+
+### Result and evidence
+- Namespace: Active
+- Deployment: Applied successfully
+- Pod: `1/1 Running`
+- Container restarts: 0
+- Application startup message: `CloudPipeline Incident Tracker listening on port 3000`
+- HTTP health verification: Pending until Day 3
+- Additional AWS resources: None
+
+### Problems and fixes
+Minikube initially could not connect to the Kubernetes API server because Docker Desktop was unavailable and the cluster had stopped. Restarting Docker Desktop and running `minikube start --driver=docker` restored the cluster.
+
+The standalone `kubectl` command was unavailable, so I used `minikube kubectl --` instead.
+
+### What I learned
+Kubernetes Deployments manage application replicas through ReplicaSets. Pods run the actual containers. Unlike our ECS deployment, which retrieves images from Amazon ECR, our local Kubernetes deployment uses an image loaded directly into Minikube.
+
+### Interview answer
+I extended CloudPipeline with a second deployment option using local Kubernetes. I created a dedicated namespace and Deployment, reused the existing Docker image, and loaded it into Minikube. Kubernetes started the Node.js application inside a Pod, and I verified its status and startup logs. This allows me to compare Kubernetes orchestration with AWS ECS without introducing additional AWS infrastructure costs.
+
