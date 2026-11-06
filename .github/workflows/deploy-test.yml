@@ -1,4 +1,4 @@
-name: CloudPipeline Deployment Test
+name: CloudPipeline Manual ECS Deployment
 
 on:
   workflow_dispatch:
@@ -11,34 +11,62 @@ permissions:
   contents: read
 
 jobs:
-  deployment-test:
+  validate:
+    name: Validate release
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    permissions:
-      id-token: write
-      contents: read
+    timeout-minutes: 10
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Validate Docker build
+        run: docker build -t cloudpipeline-app:${{ github.sha }} .
+
+  deploy:
+    name: Deploy and smoke-test ECS
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
       - name: Authenticate to AWS using OIDC
         uses: aws-actions/configure-aws-credentials@v6.3.0
         with:
           role-to-assume: arn:aws:iam::349326897252:role/pipewright-github-deploy
           aws-region: eu-central-1
           allowed-account-ids: '349326897252'
-          role-session-name: CloudPipelineDeploymentTest
+          role-session-name: CloudPipelineManualRelease
 
       - name: Confirm AWS identity
         run: aws sts get-caller-identity
 
-      - name: Inspect ECS service
-        run: |
-          aws ecs describe-services \
-            --cluster pipewright-cluster \
-            --services pipewright-app \
-            --query 'services[0].{Status:status,TaskDefinition:taskDefinition,Desired:desiredCount,Running:runningCount,Pending:pendingCount}'
-
-      - name: Check ECS is stopped before testing
+      - name: Check ECS is stopped
         run: |
           COUNTS=$(aws ecs describe-services \
             --cluster pipewright-cluster \
@@ -47,12 +75,92 @@ jobs:
             --output text)
 
           if [ "$COUNTS" != "$(printf '0\t0\t0')" ]; then
-            echo "ERROR: ECS service is not fully stopped."
+            echo "ERROR: ECS is not fully stopped."
             echo "Current counts: $COUNTS"
             exit 1
           fi
 
-          echo "Preflight passed: ECS service is stopped."
+          echo "ECS preflight passed."
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: pipewright-app
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Register new ECS task definition
+        run: |
+          CURRENT_TASK_DEF=$(aws ecs describe-services \
+            --cluster pipewright-cluster \
+            --services pipewright-app \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          aws ecs describe-task-definition \
+            --task-definition "$CURRENT_TASK_DEF" \
+            --query taskDefinition \
+            --output json |
+          jq --arg IMAGE "$IMAGE" \
+            '{
+              family,
+              executionRoleArn,
+              taskRoleArn,
+              networkMode,
+              containerDefinitions,
+              volumes,
+              requiresCompatibilities,
+              cpu,
+              memory,
+              runtimePlatform
+            } | with_entries(select(.value != null)) |
+            .containerDefinitions[0].image = $IMAGE' \
+            > task-definition-new.json
+
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition-new.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "TASK_DEFINITION_ARN=$NEW_TASK_DEF_ARN" >> "$GITHUB_ENV"
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster pipewright-cluster \
+            --service pipewright-app \
+            --task-definition "$TASK_DEFINITION_ARN" \
+            --desired-count 0
+
+      - name: Verify deployed image
+        run: |
+          TASK_DEF=$(aws ecs describe-services \
+            --cluster pipewright-cluster \
+            --services pipewright-app \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          DEPLOYED_IMAGE=$(aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF" \
+            --query 'taskDefinition.containerDefinitions[0].image' \
+            --output text)
+
+          if [ "$DEPLOYED_IMAGE" != "$IMAGE" ]; then
+            echo "ERROR: Deployed image does not match release image."
+            exit 1
+          fi
+
+          echo "Correct release image confirmed."
 
       - name: Start one Fargate task
         id: start_fargate
@@ -60,10 +168,9 @@ jobs:
           aws ecs update-service \
             --cluster pipewright-cluster \
             --service pipewright-app \
-            --desired-count 1 \
-            --query 'service.{Desired:desiredCount,TaskDefinition:taskDefinition}'
+            --desired-count 1
 
-      - name: Wait for ECS service stability
+      - name: Wait for ECS stability
         timeout-minutes: 10
         run: |
           aws ecs wait services-stable \
@@ -80,11 +187,10 @@ jobs:
             --output text)
 
           if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
-            echo "ERROR: No running ECS task found"
+            echo "ERROR: No running ECS task found."
             exit 1
           fi
 
-          echo "Running ECS task: $TASK_ARN"
           echo "TASK_ARN=$TASK_ARN" >> "$GITHUB_ENV"
 
       - name: Find Fargate public IP
@@ -96,7 +202,7 @@ jobs:
             --output text)
 
           if [ -z "$ENI_ID" ] || [ "$ENI_ID" = "None" ]; then
-            echo "ERROR: No network interface found"
+            echo "ERROR: No network interface found."
             exit 1
           fi
 
@@ -106,18 +212,15 @@ jobs:
             --output text)
 
           if [ -z "$PUBLIC_IP" ] || [ "$PUBLIC_IP" = "None" ]; then
-            echo "ERROR: No public IP found"
+            echo "ERROR: No public IP found."
             exit 1
           fi
 
-          echo "Public IP: $PUBLIC_IP"
           echo "PUBLIC_IP=$PUBLIC_IP" >> "$GITHUB_ENV"
 
       - name: Smoke test application health
         timeout-minutes: 2
         run: |
-          echo "Testing application at http://$PUBLIC_IP:3000/health"
-
           RESPONSE=$(curl \
             --silent \
             --show-error \
@@ -132,7 +235,7 @@ jobs:
           echo "$RESPONSE" |
             jq -e '.status == "ok"' > /dev/null
 
-          echo "Smoke test passed: HTTP 200 and status ok"
+          echo "Smoke test passed."
 
       - name: Stop Fargate after testing
         if: ${{ always() && steps.start_fargate.outcome != 'skipped' }}
@@ -144,6 +247,7 @@ jobs:
             --desired-count 0
 
           for attempt in $(seq 1 30); do
+            echo "Retry attempt: $attempt"
             COUNTS=$(aws ecs describe-services \
               --cluster pipewright-cluster \
               --services pipewright-app \

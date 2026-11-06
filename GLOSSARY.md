@@ -131,3 +131,16 @@ Simple definitions of the concepts used in this project.
 - **Liveness probe:** A health check that can trigger a container restart after repeated failures.
 - **Rolling update:** A controlled process for replacing application Pods with an updated configuration.
 - **Rollout:** The process of deploying or updating a Kubernetes workload.
+- **Kind:** Kubernetes IN Docker, a tool for creating temporary Kubernetes clusters using Docker containers.
+- **GitHub Actions runner:** A computer that executes the jobs and steps in a GitHub Actions workflow.
+- **Workflow trigger:** An event that starts a GitHub Actions workflow.
+- **Smoke test:** A quick test that verifies a deployed application's essential functionality.
+- **CI isolation:** Keeping automated testing workflows separate so changes to one don't unnecessarily affect another.
+- **Exit code:** A number returned by a process indicating whether it succeeded or failed.
+- **ErrImagePull:** Kubernetes failed to obtain the container image needed to start a Pod.
+- **ImagePullBackOff:** Kubernetes is delaying repeated attempts to download a container image.
+- **CrashLoopBackOff:** Kubernetes is delaying restarts of a container that repeatedly terminates.
+- **Readiness Probe:** A check that determines whether a container is ready to receive traffic.
+- **Liveness Probe:** A check that determines whether Kubernetes should restart an unhealthy container.
+- **Exit Code:** A number returned when a process exits, where zero usually indicates success.
+- **Pod Events:** Messages recording important Kubernetes actions, warnings, and failures.

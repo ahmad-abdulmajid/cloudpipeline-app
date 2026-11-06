@@ -709,3 +709,146 @@ I deployed my Node.js application to local Kubernetes using Minikube. I created 
 ### What could go wrong?
 If the Service selector doesn't match the Pod labels, the Service won't have matching endpoints and traffic won't reach the application. Incorrect health-check paths or overly aggressive probe settings can also cause availability problems.
 
+## Kubernetes Phase 2 — Day 4: Automated CI with Kind
+
+### Goal
+Automatically deploy and test the Node.js application inside a temporary Kubernetes cluster using GitHub Actions.
+
+### Concepts (in my words)
+- **Kind:** A tool that runs Kubernetes clusters inside Docker containers.
+- **GitHub Actions runner:** A temporary computer that executes our workflow.
+- **Workflow trigger:** An event that starts automation, such as a Git push.
+- **Smoke test:** A simple test that checks whether the deployed application responds correctly.
+- **CI isolation:** Testing Kubernetes separately without modifying the existing ECS deployment pipeline.
+
+### What I built
+Created `.github/workflows/kubernetes-ci.yml` with these steps:
+
+1. Checkout repository.
+2. Build Docker image.
+3. Create a Kind cluster.
+4. Load the Docker image into Kind.
+5. Apply Kubernetes Namespace, Deployment, and Service manifests.
+6. Wait for successful Deployment rollout.
+7. Inspect Kubernetes resources.
+8. Test `/health` using port forwarding and curl retries.
+9. Display diagnostics if the workflow fails.
+
+### Important commands and reasons
+
+- `docker build -t cloudpipeline-app:local .` — Build the application image.
+- `kind load docker-image cloudpipeline-app:local --name cloudpipeline-ci` — Load the image into the correct Kind cluster.
+- `kubectl apply -f` — Create Kubernetes resources.
+- `kubectl rollout status` — Wait for the Deployment to become available.
+- `kubectl port-forward` — Access the Service from the runner.
+- `curl --fail` — Fail the smoke test when HTTP requests return errors.
+- `kubectl describe` and `kubectl logs` — Diagnose Kubernetes failures.
+
+### Result and evidence
+- GitHub Actions ran successfully on the `kubernetes-ci-test` branch.
+- The workflow completed in approximately 1 minute 13 seconds.
+- Docker image build succeeded.
+- Kind cluster and application deployment succeeded.
+- Kubernetes rollout completed successfully.
+- `/health` returned `{"status":"ok"}`.
+- The workflow finished successfully without deploying to AWS.
+
+### Problems and fixes
+
+**Problem:** The first workflow failed while loading the Docker image.
+
+**Root cause:** The command searched for a Kind cluster named `kind`, but the cluster had a different name.
+
+**Fix:** Explicitly configured `cluster_name: cloudpipeline-ci` and loaded the image using `--name cloudpipeline-ci`.
+
+**Additional observation:** The first HTTP request failed because port forwarding wasn't ready. The retry mechanism successfully handled the delay.
+
+### Interview answer
+I extended my existing CI/CD project by adding a separate Kubernetes testing workflow. GitHub Actions builds the Docker image and creates a temporary Kind cluster. The workflow deploys the application using Kubernetes manifests, waits for readiness, and tests its health endpoint. This validates Kubernetes deployment behavior without requiring AWS infrastructure.
+
+### What could go wrong?
+An incorrect cluster name, unavailable container image, failing readiness probe, or unhealthy application could cause the workflow to fail. Kubernetes resource descriptions and container logs help identify the cause.
+## Kubernetes Phase 2 — Day 5: Troubleshooting and Recovery
+
+### Goal
+Learn to identify, diagnose, and recover from common Kubernetes failures without affecting the working application or AWS ECS infrastructure.
+
+### Concepts (in my words)
+- **ErrImagePull:** Kubernetes failed to download a container image.
+- **ImagePullBackOff:** Kubernetes delays repeated attempts to download an unavailable image.
+- **CrashLoopBackOff:** Kubernetes delays restarting a container that repeatedly terminates.
+- **Readiness probe:** Determines whether a running container is ready to receive traffic.
+- **Exit code:** Indicates whether a process finished successfully (`0`) or unsuccessfully (typically nonzero).
+- **Pod events:** Diagnostic messages that help explain scheduling, image pulling, container restarts, and health-check failures.
+
+### What I Built and Tested
+I performed three isolated troubleshooting experiments in my local Minikube cluster.
+
+**1. ImagePullBackOff**
+
+Created a Pod using a nonexistent Docker image with `imagePullPolicy: Always`.
+
+Observed `ErrImagePull`, followed by `ImagePullBackOff`.
+
+Used `kubectl describe` to identify the failed Docker Hub image pull.
+
+**2. Container crash and restart backoff**
+
+Created a BusyBox Pod with a command that prints an error message and exits with code `1`.
+
+Observed repeated restarts and container errors.
+
+Verified the exit code and inspected the application logs.
+
+**3. Readiness probe failure**
+
+Created a Pod using the working CloudPipeline image but configured its readiness probe to check `/wrong-health`.
+
+Observed `0/1 Running`, with zero container restarts.
+
+Used `kubectl describe` to identify repeated HTTP 404 responses.
+
+### Commands and Reasons
+
+```bash
+# Check application health
+minikube kubectl -- get pods -n cloudpipeline
+
+# Investigate Pod configuration and events
+minikube kubectl -- describe pod POD_NAME -n cloudpipeline
+
+# Inspect container output
+minikube kubectl -- logs POD_NAME -n cloudpipeline
+
+# Inspect a previous container instance
+minikube kubectl -- logs POD_NAME -n cloudpipeline --previous
+
+# Check the previous termination exit code
+minikube kubectl -- get pod POD_NAME -n cloudpipeline \
+  -o jsonpath='{.status.containerStatuses[0].lastState.terminated.exitCode}{"\n"}'
+
+# Remove temporary troubleshooting Pods
+minikube kubectl -- delete pod POD_NAME -n cloudpipeline
+```
+
+### Results and Evidence
+- Image pull failure reproduced and diagnosed through Kubernetes events.
+- Repeated container failures reproduced with exit code `1`.
+- Readiness probe failure confirmed by HTTP 404 events.
+- The original `cloudpipeline-app` remained healthy throughout the experiments.
+- All temporary troubleshooting Pods were deleted.
+
+### Problems and Fixes
+
+**Problem:** The first BusyBox test showed exit code `0` rather than `1`.
+
+**Root cause:** The Pod configuration contained no explicit container `command` or `args`, so the image's default startup command was used.
+
+**Fix:** Recreated the Pod with an explicit shell command that exits with code `1`.
+
+**Problem:** Previous container logs were temporarily unavailable.
+
+**Fix:** Used Pod events, container status, and exit codes as alternative diagnostic evidence.
+
+### Interview Answer
+I tested three common Kubernetes failure scenarios using Minikube. I investigated unavailable container images, repeatedly crashing containers, and incorrectly configured readiness probes. I used Kubernetes events, logs, and exit codes to identify the underlying causes. All experiments were isolated from the working application and AWS infrastructure.
