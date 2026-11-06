@@ -238,7 +238,7 @@ jobs:
           echo "Smoke test passed."
 
       - name: Stop Fargate after testing
-        if: ${{ !cancelled() && steps.start_fargate.outcome != 'skipped' }}
+        if: ${{ always() && steps.start_fargate.outcome != 'skipped' }}
         timeout-minutes: 5
         run: |
           aws ecs update-service \
