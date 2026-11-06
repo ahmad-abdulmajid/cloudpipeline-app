@@ -1,0 +1,33 @@
+name: AWS OIDC Authentication Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-aws-auth:
+    name: Verify AWS OIDC
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to AWS using OIDC
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::349326897252:role/pipewright-github-deploy
+          aws-region: eu-central-1
+          allowed-account-ids: '349326897252'
+          role-session-name: PipeWrightOIDCTest
+
+      - name: Verify AWS identity
+        run: |
+          aws sts get-caller-identity \
+            --query '{IdentityType:Arn}' \
+            --output json
