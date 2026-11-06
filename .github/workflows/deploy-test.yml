@@ -177,6 +177,22 @@ jobs:
             --cluster pipewright-cluster \
             --services pipewright-app
 
+      - name: Confirm expected task definition is running
+        run: |
+          ACTUAL_TASK_DEF=$(aws ecs describe-services \
+            --cluster pipewright-cluster \
+            --services pipewright-app \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          if [ "$ACTUAL_TASK_DEF" != "$TASK_DEFINITION_ARN" ]; then
+            echo "ERROR: ECS is not using the expected task definition."
+            echo "The deployment may have rolled back."
+            exit 1
+          fi
+
+          echo "Expected task definition confirmed."
+
       - name: Find running ECS task
         run: |
           TASK_ARN=$(aws ecs list-tasks \
@@ -192,7 +208,22 @@ jobs:
           fi
 
           echo "TASK_ARN=$TASK_ARN" >> "$GITHUB_ENV"
+      - name: Verify running task revision
+        run: |
+          RUNNING_TASK_DEF=$(aws ecs describe-tasks \
+            --cluster pipewright-cluster \
+            --tasks "$TASK_ARN" \
+            --query 'tasks[0].taskDefinitionArn' \
+            --output text)
 
+          if [ "$RUNNING_TASK_DEF" != "$TASK_DEFINITION_ARN" ]; then
+            echo "ERROR: Running task uses the wrong task definition."
+            echo "Expected: $TASK_DEFINITION_ARN"
+            echo "Actual: $RUNNING_TASK_DEF"
+            exit 1
+          fi
+
+          echo "Running task uses the expected revision."
       - name: Find Fargate public IP
         run: |
           ENI_ID=$(aws ecs describe-tasks \
@@ -238,7 +269,7 @@ jobs:
           echo "Smoke test passed."
 
       - name: Stop Fargate after testing
-        if: ${{ always() && steps.start_fargate.outcome != 'skipped' }}
+        if: ${{ always() && (steps.start_fargate.outcome == 'success' || steps.start_fargate.outcome == 'failure') }}
         timeout-minutes: 5
         run: |
           aws ecs update-service \
