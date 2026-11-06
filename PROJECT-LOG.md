@@ -852,3 +852,81 @@ minikube kubectl -- delete pod POD_NAME -n cloudpipeline
 
 ### Interview Answer
 I tested three common Kubernetes failure scenarios using Minikube. I investigated unavailable container images, repeatedly crashing containers, and incorrectly configured readiness probes. I used Kubernetes events, logs, and exit codes to identify the underlying causes. All experiments were isolated from the working application and AWS infrastructure.
+
+## Milestone: Change-Based CI and Manual ECS Deployment
+
+### Goal
+Separate automatic application and Kubernetes validation from AWS ECS deployment to improve workflow organization, security, and cost control.
+
+### Concepts (in my words)
+- **Change-based CI:** GitHub Actions runs relevant tests when specific files change.
+- **Manual deployment:** AWS deployment starts only when I explicitly trigger the workflow.
+- **Pull request:** A way to review and validate changes before merging them into the main branch.
+- **Workflow validation:** Checking GitHub Actions configuration for errors before running it.
+- **Fast-forward pull:** Updating my local branch to a newer commit without creating an extra merge commit.
+
+### What I built
+1. Updated `ci.yml` to automatically run Node.js tests and build a Docker image for relevant application changes.
+2. Updated `kubernetes-ci.yml` to test the application on a temporary Kind cluster.
+3. Updated `deploy-test.yml` to support manually triggered ECR and ECS deployment.
+4. Restricted manual deployment jobs to the `main` branch.
+5. Preserved GitHub OIDC authentication without storing AWS access keys.
+6. Added best-effort ECS cleanup after deployment testing.
+
+### Commands and code with reasons
+
+`actionlint .github/workflows/ci.yml .github/workflows/kubernetes-ci.yml .github/workflows/deploy-test.yml`
+
+Validates GitHub Actions configuration and detects common workflow errors.
+
+`git diff --check`
+
+Checks for whitespace errors in modified files.
+
+`grep -nE 'aws-actions|aws ecs|aws ecr|desired-count' .github/workflows/ci.yml`
+
+Checks that known AWS deployment commands are absent from automatic Node.js CI.
+
+`git push origin kubernetes-ci-test`
+
+Publishes the tested workflow changes to the feature branch.
+
+`git switch main`
+
+Switches to the main branch.
+
+`git pull --ff-only origin main`
+
+Synchronizes local main with GitHub without creating an unexpected merge commit.
+
+### Result and evidence
+- Pull Request #2 successfully merged into `main`.
+- Merge commit: `afe9307`.
+- Node.js CI passed on `main`.
+- Kubernetes CI passed on `main`.
+- No ECS deployment workflow was triggered by the merge.
+- Local repository synchronized successfully.
+- `git status --short` returned no output.
+
+### Problems and fixes (root cause)
+- **Problem:** ShellCheck reported unused `attempt` variables in retry loops.
+  **Root cause:** Loop counters were declared but not referenced.
+  **Fix:** Added retry-attempt logging.
+- **Problem:** Bash reported `!cancelled: event not found`.
+  **Root cause:** A GitHub Actions expression was interpreted directly by Bash, where `!` performs history expansion.
+  **Fix:** Edited the expression inside the YAML file instead of executing it as a shell command.
+- **Problem:** ECS cleanup could be skipped after deployment failures or cancellation.
+  **Root cause:** The cleanup condition depended on the workflow's cancellation state.
+  **Fix:** Used `always()` to attempt cleanup after failures and cancellation. This remains best-effort if the runner is terminated.
+
+### Security and cost considerations
+- The project's IAM user remains disabled.
+- GitHub Actions uses OIDC to assume an AWS IAM role.
+- Automatic CI does not deploy to AWS.
+- Manual ECS deployment may incur Fargate charges.
+- ECS cleanup must be independently verified after every live deployment.
+- The updated manual ECS workflow has not yet been tested against AWS.
+
+### Interview answer
+I separated automatic CI from AWS deployment to improve reliability and cost control. GitHub Actions now runs Node.js and Kubernetes tests when relevant files change. AWS ECS deployment requires a manual trigger on the main branch and uses OIDC for temporary credentials. I validated the workflows, tested them through a feature branch, and merged the changes after successful CI checks.
+

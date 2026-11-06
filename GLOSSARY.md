@@ -144,3 +144,15 @@ Simple definitions of the concepts used in this project.
 - **Liveness Probe:** A check that determines whether Kubernetes should restart an unhealthy container.
 - **Exit Code:** A number returned when a process exits, where zero usually indicates success.
 - **Pod Events:** Messages recording important Kubernetes actions, warnings, and failures.
+
+## CI/CD Workflow Improvements
+
+- **Change-based CI:** A CI configuration that runs workflows only when relevant files change.
+- **Path Filter:** A GitHub Actions setting that determines which file changes trigger a workflow.
+- **Workflow Dispatch:** A GitHub Actions event that allows a workflow to be started manually.
+- **Deployment Guard:** A condition that restricts deployment to approved circumstances, such as running from the main branch.
+- **Actionlint:** A tool that checks GitHub Actions workflows for configuration errors.
+- **ShellCheck:** A tool that identifies potential problems in shell scripts.
+- **Fast-forward:** A Git operation that advances a branch without creating an additional merge commit.
+- **Staging Area:** The Git area where changes are selected before committing.
+- **Best-effort Cleanup:** A cleanup operation that is attempted but cannot be guaranteed in every failure scenario.
