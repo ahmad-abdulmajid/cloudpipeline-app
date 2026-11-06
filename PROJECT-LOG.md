@@ -930,3 +930,38 @@ Synchronizes local main with GitHub without creating an unexpected merge commit.
 ### Interview answer
 I separated automatic CI from AWS deployment to improve reliability and cost control. GitHub Actions now runs Node.js and Kubernetes tests when relevant files change. AWS ECS deployment requires a manual trigger on the main branch and uses OIDC for temporary credentials. I validated the workflows, tested them through a feature branch, and merged the changes after successful CI checks.
 
+## Milestone: ECS Deployment Safety Improvements
+
+### Goal
+Improve the reliability of the manual ECS deployment workflow without starting AWS resources.
+
+### Concepts (in my words)
+- **Deployment verification:** Checking that the intended application version actually runs.
+- **Rollback:** Returning to a previous working version when a deployment fails.
+- **Cleanup:** Stopping temporary resources after testing to avoid unnecessary charges.
+
+### What I built
+- Added verification that the ECS service references the expected task definition.
+- Added verification that the running ECS task uses the expected task definition revision.
+- Improved the cleanup condition to attempt scaling ECS back to zero when the Fargate-start step succeeds or fails.
+
+### Commands and code with reasons
+- `git diff --check`: Detect whitespace errors.
+- `actionlint .github/workflows/deploy-test.yml`: Validate GitHub Actions workflow syntax and expressions.
+- `git diff`: Review changes before committing.
+- `git commit`: Save the verified workflow changes.
+
+### Result and evidence
+- Local workflow validation completed successfully.
+- Deployment execution remains pending because AWS reported an account restriction.
+- GitHub OIDC authentication was independently tested and passed.
+
+### Problems and fixes (root cause)
+- **Problem:** ECS could restore an older revision after a failed deployment.
+- **Fix:** Added checks comparing the configured service revision and running task revision against the newly registered revision.
+- **Problem:** Cleanup could be attempted even when the Fargate-start step was skipped.
+- **Fix:** Restricted the cleanup condition to successful or failed start attempts.
+- **Remaining limitation:** Runner interruption can prevent cleanup, so manual recovery remains necessary.
+
+### Interview answer
+I improved our GitHub Actions deployment workflow by adding checks that verify both the ECS service and running task use the intended task definition revision. This helps detect unsuccessful releases that might otherwise appear healthy after an automatic rollback. I also refined the cleanup condition so the workflow attempts to stop Fargate after deployment testing. These changes were validated locally, and AWS deployment testing is pending account restoration.
