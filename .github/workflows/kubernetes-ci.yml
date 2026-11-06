@@ -6,8 +6,26 @@ on:
     branches:
       - main
       - kubernetes-ci-test
+    paths:
+      - 'app.js'
+      - 'server.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'k8s/**'
+      - '.github/workflows/kubernetes-ci.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'app.js'
+      - 'server.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'k8s/**'
+      - '.github/workflows/kubernetes-ci.yml'
   workflow_dispatch:
 
 permissions:
@@ -60,6 +78,7 @@ jobs:
           trap 'kill "$PF_PID" 2>/dev/null || true' EXIT
 
           for attempt in $(seq 1 20); do
+            echo "Retry attempt: $attempt"
             if curl --fail --silent --show-error \
               http://127.0.0.1:8080/health; then
               echo "Health check passed!"
