@@ -965,3 +965,56 @@ Improve the reliability of the manual ECS deployment workflow without starting A
 
 ### Interview answer
 I improved our GitHub Actions deployment workflow by adding checks that verify both the ECS service and running task use the intended task definition revision. This helps detect unsuccessful releases that might otherwise appear healthy after an automatic rollback. I also refined the cleanup condition so the workflow attempts to stop Fargate after deployment testing. These changes were validated locally, and AWS deployment testing is pending account restoration.
+
+## Milestone: Local Monitoring with Prometheus and Grafana
+
+**Date:** November 10, 2026
+
+### Goal
+Add application monitoring to CloudPipeline without creating additional AWS resources or charges.
+
+### Concepts (in my words)
+- **Metrics:** Numerical measurements that describe how an application behaves.
+- **Prometheus:** Collects and stores application measurements by scraping `/metrics`.
+- **Grafana:** Visualizes Prometheus measurements using dashboards.
+- **PromQL:** Query language used to calculate request rates, response times, and errors.
+- **Docker Compose:** Runs multiple connected containers using one YAML configuration.
+- **Regression testing:** Verifies that previously working functionality remains intact after changes.
+
+### What I built
+- Instrumented the Node.js Express application using `@prometheus-io/client`.
+- Added HTTP request counters, response-time histograms, and default process metrics.
+- Configured Prometheus to scrape the application every 15 seconds.
+- Ran the application, Prometheus, and Grafana locally with Docker Compose.
+- Created three Grafana panels:
+  1. HTTP Requests per Second
+  2. Average HTTP Response Time
+  3. HTTP Server Errors per Second
+- Exported the Grafana dashboard to `monitoring/grafana/dashboards/cloudpipeline-dashboard.json`.
+- Disabled `/metrics` by default and enabled it explicitly in the local monitoring environment.
+- Added two automated tests covering enabled and disabled metrics behavior.
+
+### Commands and code with reasons
+
+`npm test` — Verify the application and metrics security tests.
+
+`npm audit --audit-level=high` — Check dependencies for known vulnerabilities.
+
+`docker compose -f compose.monitoring.yml up -d --build` — Build and run the monitoring services locally.
+
+`docker compose -f compose.monitoring.yml ps` — Check container status.
+
+`curl http://localhost:3000/health` — Verify application availability.
+
+`curl http://localhost:3000/metrics` — Verify metrics are exposed in the local monitoring environment.
+
+`git diff --check` — Check tracked changes for whitespace errors.
+
+### Result and evidence
+- All six Node.js tests passed.
+- npm audit reported zero known vulnerabilities.
+- Prometheus target `cloudpipeline-app` showed UP.
+- Grafana successfully queried the Prometheus API.
+- The request-rate panel displayed HTTP traffic spikes.
+- The response-time panel displayed measurements around 0.4–0.5 milliseconds during testing.
+- The server-error panel displayed zero when no matching server-error

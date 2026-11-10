@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY --chown=node:node app.js server.js ./
+COPY --chown=node:node app.js server.js metrics.js ./
 
 USER node
 

@@ -156,3 +156,28 @@ Simple definitions of the concepts used in this project.
 - **Fast-forward:** A Git operation that advances a branch without creating an additional merge commit.
 - **Staging Area:** The Git area where changes are selected before committing.
 - **Best-effort Cleanup:** A cleanup operation that is attempted but cannot be guaranteed in every failure scenario.
+
+## Monitoring and Observability
+
+- **Monitoring:** Continuously collecting and reviewing measurements to understand an application's health and performance.
+- **Observability:** Understanding a system's internal behavior through information such as metrics, logs, and traces.
+- **Metric:** A numerical measurement describing system behavior or performance.
+- **Prometheus:** A monitoring system that collects and stores metrics from applications.
+- **Grafana:** A visualization platform used to create dashboards from monitoring data.
+- **PromQL:** Prometheus Query Language, used to retrieve and calculate metrics.
+- **Instrumentation:** Adding code to an application to collect measurements about its behavior.
+- **Counter:** A metric that increases as events occur, such as HTTP requests.
+- **Histogram:** A metric that records observations in buckets to analyze their distribution.
+- **Scraping:** Prometheus periodically requesting metrics from an application's endpoint.
+- **Scrape Interval:** The frequency at which Prometheus collects metrics from a target.
+- **Target:** An application or service that Prometheus is configured to monitor.
+- **Time Series:** Measurements recorded over time.
+- **Request Rate:** The average number of HTTP requests handled per second.
+- **Response Time (Latency):** The time an application takes to respond to a request.
+- **HTTP 5xx Error:** A response indicating that the server encountered an error.
+- **Docker Compose:** A tool for defining and running multiple connected containers using YAML.
+- **Environment Variable:** A configuration value supplied to an application outside its source code.
+- **Regression Test:** An automated test that checks whether existing behavior still works after changes.
+- **npm audit:** A command that checks Node.js dependencies for known security vulnerabilities.
+- **Dashboard Export:** A JSON configuration file used to preserve or recreate a Grafana dashboard.
+- **NaN:** A value meaning Not a Number, which can appear when a calculation is undefined.

@@ -1,6 +1,32 @@
 const express = require("express");
 
 const app = express();
+const {
+  register,
+  httpRequestsTotal,
+  httpRequestDuration
+} = require("./metrics");
+
+app.use((req, res, next) => {
+  if (req.path === "/metrics") {
+    return next();
+  }
+
+  const endTimer = httpRequestDuration.startTimer();
+
+  res.on("finish", () => {
+    const labels = {
+      method: req.method,
+      route: req.route?.path || "unmatched",
+      status_code: String(res.statusCode)
+    };
+
+    httpRequestsTotal.inc(labels);
+    endTimer(labels);
+  });
+
+  next();
+});
 
 app.use(express.json());
 app.use(express.static(require("node:path").join(__dirname, "public")));
@@ -18,6 +44,17 @@ const incidents = [
 
 let nextId = 2;
 const severities = ["Low", "Medium", "High"];
+
+if (process.env.ENABLE_METRICS === "true") {
+  app.get("/metrics", async (req, res) => {
+    try {
+      res.set("Content-Type", register.contentType);
+      res.send(await register.metrics());
+    } catch (error) {
+      res.status(500).send("Unable to collect metrics");
+    }
+  });
+}
 
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
