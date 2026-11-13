@@ -13,6 +13,10 @@ on:
       - 'Dockerfile'
       - '.dockerignore'
       - '.github/workflows/ci.yml'
+      - 'metrics.js'
+      - 'test/**'
+      - 'monitoring/**'
+      - 'compose.monitoring.yml'
   pull_request:
     branches:
       - main
@@ -24,6 +28,10 @@ on:
       - 'Dockerfile'
       - '.dockerignore'
       - '.github/workflows/ci.yml'
+      - 'metrics.js'
+      - 'test/**'
+      - 'monitoring/**'
+      - 'compose.monitoring.yml'
   workflow_dispatch:
 
 permissions:
@@ -55,6 +63,14 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Validate Prometheus configuration and alert rules
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/monitoring/prometheus:/etc/prometheus:ro" \
+            --entrypoint promtool \
+            prom/prometheus:v3.5.0 \
+            check config /etc/prometheus/prometheus.yml
 
       - name: Build Docker image
         run: docker build -t cloudpipeline-app:${{ github.sha }} .
