@@ -321,11 +321,21 @@ The six original findings were associated with `undici` and `brace-expansion` pa
 
 The scan uses `--ignore-unfixed`, so the results represent vulnerabilities with available fixes, not every possible security risk.
 
-**Deployment compatibility:**
+**Final AWS ECS deployment verification**
 
-The ECS container health check was updated from `CMD-SHELL` to `CMD`, allowing it to execute Node.js directly without requiring a shell.
+The hardened distroless Docker image was successfully deployed to AWS ECS Fargate using the manual GitHub Actions deployment workflow on November 13, 2026.
 
-The hardened image and health-check command were tested locally. CloudPipeline CI and Kubernetes CI both passed. A live ECS deployment of the hardened image has not yet been verified.
+- **Authentication:** GitHub OIDC with temporary AWS credentials.
+- **Container registry:** Amazon ECR (`pipewright-app`).
+- **ECS task definition:** Revision 22.
+- **Health check:** Direct Node.js execution using `CMD`, without a shell.
+- **Smoke test:** `/health` passed.
+- **Automatic cleanup:** The workflow scaled the ECS service back to zero.
+- **Independent verification:** ECS service was `ACTIVE`, with desired, running, and pending counts all equal to `0`.
+
+Both CloudPipeline CI and Kubernetes CI also passed with the hardened image.
+
+The deployment is manually triggered to control AWS costs; regular pushes run CI without starting paid Fargate tasks.
 
 ## Infrastructure as Code
 

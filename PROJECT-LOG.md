@@ -1298,3 +1298,77 @@ Because distroless containers don't include a shell, so the health check must ex
 ### What could go wrong?
 
 A future base-image or dependency update could introduce new vulnerabilities. Automated Trivy scanning helps detect those findings, but regular review and patching are still necessary.
+
+## Milestone: Final Hardened ECS Deployment Verification
+
+**Date:** November 13, 2026
+
+### Goal
+
+Verify that the hardened, distroless CloudPipeline Docker image deploys successfully to AWS ECS Fargate and that the service returns to zero running tasks afterward.
+
+### Concepts (in my words)
+
+- **Deployment verification:** Confirming that an application works in its actual deployment environment.
+- **Smoke test:** A quick test checking that the deployed application's essential functionality works.
+- **ECS desired count:** The number of tasks ECS is configured to maintain.
+
+### What I built
+
+- Executed the manual GitHub Actions deployment workflow.
+- Authenticated to AWS using GitHub OIDC.
+- Built and pushed the hardened Docker image to Amazon ECR.
+- Registered a new ECS task-definition revision using the distroless-compatible health check.
+- Deployed the application to ECS Fargate.
+- Successfully completed the automated `/health` smoke test.
+- Confirmed that the ECS service returned to zero tasks.
+
+### Commands and code with reasons
+
+```bash
+aws ecs describe-services \
+  --cluster pipewright-cluster \
+  --services pipewright-app \
+  --region eu-central-1 \
+  --profile cloudpipeline-operator \
+  --query 'services[0].{Status:status,Desired:desiredCount,Running:runningCount,Pending:pendingCount,TaskDefinition:taskDefinition}' \
+  --output table
+```
+
+This read-only command independently verifies the ECS service status and task counts after deployment.
+
+### Result and evidence
+
+- GitHub Actions manual ECS deployment: **Passed**.
+- Application smoke test: **Passed**.
+- ECS task definition: **pipewright-app:22**.
+- Service status: **ACTIVE**.
+- Desired tasks: **0**.
+- Running tasks: **0**.
+- Pending tasks: **0**.
+- Previously verified image scan: **0 HIGH and 0 CRITICAL fixable vulnerabilities**.
+
+### Problems and fixes (root cause)
+
+**Problem:** The local AWS operator user received `AccessDeniedException` when calling `ecs:ListTasks`.
+
+**Root cause:** Its IAM policy did not permit `ecs:ListTasks`.
+
+**Resolution:** Used the already-authorized `ecs:DescribeServices` operation to independently verify that the service had zero running, pending, and desired tasks, without expanding IAM permissions.
+
+### Interview answer
+
+I hardened the CloudPipeline Docker image using a multi-stage build and distroless Node.js runtime. I integrated Trivy scanning into GitHub Actions and reduced the reported HIGH vulnerabilities from six to zero. I updated the ECS health check to run without a shell and verified the image through the complete GitHub Actions deployment workflow. Finally, I confirmed the application passed its smoke test and the ECS service returned to zero running tasks.
+
+### Likely interview questions
+
+**Why use distroless?** To reduce unnecessary software and the container's attack surface.
+
+**How did you verify deployment success?** Through GitHub Actions deployment status, the `/health` smoke test, and ECS service status.
+
+**How did you control Fargate costs?** By using a manual deployment workflow that scales the ECS service back to zero after testing.
+
+### What could go wrong?
+
+A successful deployment doesn't guarantee cleanup will always succeed. The workflow includes automatic cleanup, but task counts should also be checked independently.
+
