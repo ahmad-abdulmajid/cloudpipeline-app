@@ -1,8 +1,8 @@
 # CloudPipeline — Secure CI/CD Pipeline on AWS
 
-A hands-on DevOps portfolio project demonstrating automated testing, Docker containerization, Infrastructure as Code, keyless AWS authentication, and container deployment recovery.
+A hands-on DevOps portfolio project demonstrating automated testing, Docker containerization, Infrastructure as Code, keyless AWS authentication, container deployment recovery, and local application monitoring.
 
-Built using **GitHub Actions, Terraform, Docker, Amazon ECR, Amazon ECS Fargate, AWS IAM, and CloudWatch**.
+Built using **GitHub Actions, Terraform, Docker, Kubernetes, Amazon ECR, Amazon ECS Fargate, AWS IAM, CloudWatch, Prometheus, and Grafana**.
 
 ![CloudPipeline CI](https://github.com/ahmad-abdulmajid/cloudpipeline-app/actions/workflows/ci.yml/badge.svg)
 
@@ -10,9 +10,9 @@ Built using **GitHub Actions, Terraform, Docker, Amazon ECR, Amazon ECS Fargate,
 
 CloudPipeline demonstrates how application code moves from a GitHub repository into AWS through a CI/CD pipeline.
 
-The project uses a Node.js and Express application with automated tests and a `/health` endpoint.
+The project uses a Node.js and Express application with automated tests, a `/health` endpoint, and opt-in Prometheus metrics instrumentation.
 
-When code is pushed to `main`, GitHub Actions automatically runs application tests and validates the Docker build. A separate Kubernetes CI workflow creates a temporary Kind cluster, deploys the application, and smoke-tests its `/health` endpoint.
+When code is pushed to `main`, GitHub Actions automatically runs the dependency vulnerability audit, application tests, and Docker build. A separate Kubernetes CI workflow creates a temporary Kind cluster, deploys the application, and smoke-tests its `/health` endpoint.
 
 AWS deployment is intentionally manual through `deploy-test.yml`. When triggered on `main`, the workflow authenticates using GitHub OIDC, pushes a commit-tagged image to Amazon ECR, registers a new ECS task definition revision, starts one Fargate task, verifies the deployed revision and `/health` response, and attempts to scale the service back to zero.
 
@@ -79,8 +79,9 @@ The workflow:
 1. Checks out the application repository.
 2. Sets up Node.js 24.
 3. Installs dependencies using `npm ci`.
-4. Runs automated tests using `npm test`.
-5. Builds the Docker image.
+4. Audits dependencies using `npm audit --audit-level=high`.
+5. Runs automated tests using `npm test` (including metrics endpoint access tests).
+6. Builds the Docker image.
 
 This workflow does not deploy to AWS.
 
@@ -179,6 +180,86 @@ These exercises helped demonstrate how to investigate deployment failures using 
 
 The Kubernetes extension is an additional deployment option. It does not replace the AWS ECS pipeline.
 
+## Local Monitoring — Prometheus and Grafana
+
+CloudPipeline includes a **local-only monitoring stack** built with Docker Compose. This monitoring setup is independent of the AWS ECS deployment and adds no AWS resources or charges.
+
+```mermaid
+flowchart LR
+    A["Node.js / Express App"] -->|"GET /metrics"| B["Prometheus"]
+    B -->|"PromQL queries"| C["Grafana"]
+    C --> D["CloudPipeline Monitoring Dashboard"]
+```
+
+### Metrics collected
+
+The Express application uses `@prometheus-io/client` to collect:
+
+- **HTTP request counts** (`http_requests_total`), labeled by request method, route, and status code.
+- **Request durations** (`http_request_duration_seconds`), recorded as a histogram.
+- **Default Node.js process metrics**, including CPU and memory usage.
+
+Prometheus scrapes `http://app:3000/metrics` every 15 seconds within the Docker Compose network. Grafana queries Prometheus using the internal service address `http://prometheus:9090`.
+
+### Monitoring dashboard
+
+The exported dashboard is version-controlled at [`monitoring/grafana/dashboards/cloudpipeline-dashboard.json`](monitoring/grafana/dashboards/cloudpipeline-dashboard.json). It includes three panels:
+
+| Panel | What it measures |
+|---|---|
+| HTTP Requests per Second | Request throughput across the application |
+| Average HTTP Response Time | Mean duration of completed HTTP requests |
+| HTTP Server Errors per Second | Frequency of HTTP 5xx responses; zero shown if no matching error series exists |
+
+An empty latency graph during inactivity may be normal because the average is undefined when no requests occur. The server-error panel has been configured and displays zero; a controlled 5xx failure test has not yet been documented.
+
+### Run locally
+
+**Prerequisites:** Docker Engine and Docker Compose, with local ports 3000, 9090, and 3001 available.
+
+From the application repository root, set a local Grafana password without putting it in source code:
+
+```bash
+read -rsp "Choose a local Grafana admin password: " GRAFANA_ADMIN_PASSWORD
+echo
+export GRAFANA_ADMIN_PASSWORD
+docker compose -f compose.monitoring.yml up -d --build
+```
+
+Open:
+
+- **Application:** `http://localhost:3000/health`
+- **Prometheus targets:** `http://localhost:9090/targets` — the `cloudpipeline-app` target should show **UP**.
+- **Grafana:** `http://localhost:3001` — sign in as `admin` with the password set above.
+
+To restore the saved dashboard in Grafana, go to **Dashboards → New → Import**, select the exported JSON file, and choose the Prometheus data source when prompted. For a fresh Grafana installation, first configure the Prometheus data source with URL `http://prometheus:9090`.
+
+Verify the local metrics endpoint:
+
+```bash
+curl -s -o /dev/null -w "Metrics HTTP status: %{http_code}\n" http://localhost:3000/metrics
+```
+
+Expected status with the monitoring Compose setup: `200`.
+
+Stop the local stack after testing:
+
+```bash
+docker compose -f compose.monitoring.yml down
+```
+
+This stops and removes the monitoring containers and network **without deleting the named Prometheus and Grafana data volumes**. If using a new shell, set `GRAFANA_ADMIN_PASSWORD` again before running Compose commands because the configuration requires that variable.
+
+### Monitoring security and validation
+
+- `/metrics` is **disabled by default** and only registered when `ENABLE_METRICS=true`. The local monitoring Compose file explicitly enables it for the application service.
+- Published container ports are bound to `127.0.0.1` on the host. Docker Compose's internal network allows Prometheus to reach `app:3000`.
+- This is a **local-demo safeguard**, not endpoint authentication or a production monitoring security architecture. Do not enable `/metrics` on a publicly reachable ECS task without additional network restrictions or authentication.
+- Automated tests verify **404** when metrics are disabled and **200** when enabled; all **six application tests** passed locally and in CI.
+- `npm audit` reported **zero known vulnerabilities** at the time of the monitoring milestone. The CI workflow also enforces a high-severity dependency audit.
+
+For commands, observed results, and troubleshooting, see [PROJECT-LOG.md](PROJECT-LOG.md).
+
 ## Security Design
 
 CloudPipeline implements several security practices:
@@ -190,6 +271,8 @@ CloudPipeline implements several security practices:
 - **Immutable image tags:** Docker images are identified using Git commit SHAs.
 - **Private Terraform state:** Local state and sensitive variable files are excluded from Git.
 - **Container health checks:** ECS verifies application health.
+- **Metrics access control:** The `/metrics` route is disabled by default and enabled explicitly only for local monitoring; it is not exposed by default in AWS.
+- **Dependency auditing:** Application CI runs `npm audit --audit-level=high`.
 - **Automatic recovery:** ECS deployment circuit breaker is configured to support rollback.
 
 **Security tradeoff:** The demonstration uses a public subnet and public IP without a permanent Application Load Balancer. This reduces infrastructure cost and complexity but is not intended as a production-grade public networking architecture.
@@ -300,6 +383,16 @@ cloudpipeline-app/
 │   │   ├── 004-terraform-vs-cloudformation.md
 │   │   └── 005-terraform-vs-pipeline-ownership.md
 │   └── ECS-RECOVERY.md
+├── monitoring/
+│   ├── prometheus/
+│   │   └── prometheus.yml
+│   └── grafana/
+│       └── dashboards/
+│           └── cloudpipeline-dashboard.json
+├── test/
+│   └── metrics.test.js
+├── metrics.js
+├── compose.monitoring.yml
 ├── Dockerfile
 ├── README.md
 ├── PROJECT-LOG.md
@@ -313,6 +406,10 @@ cloudpipeline-app/
 - `deploy-test.yml`: Manually triggered AWS ECS deployment.
 - `oidc-test.yml`: Independent AWS OIDC authentication test.
 - `k8s/`: Kubernetes configuration for the application.
+- `metrics.js`: Prometheus counters, histograms, and default process metrics.
+- `compose.monitoring.yml`: Local monitoring services and metrics enablement.
+- `monitoring/`: Prometheus scrape configuration and exported Grafana dashboard.
+- `test/metrics.test.js`: Automated checks that `/metrics` is disabled by default.
 - `docs/adr/`: Architecture decisions and their trade-offs.
 - `docs/ECS-RECOVERY.md`: Manual procedure for stopping ECS tasks after interrupted deployments.
 
@@ -341,7 +438,10 @@ Additional references:
 
 | Component | Verification status |
 |---|---|
-| Node.js application tests | Passed |
+| Node.js application tests | 6 passed, including metrics security checks |
+| Dependency audit in CI | Passed |
+| Local Prometheus scraping | Target UP |
+| Grafana monitoring dashboard | Three panels created and exported |
 | Docker image build | Passed |
 | Automatic GitHub Actions CI | Passed on `main` |
 | Local Kubernetes with Minikube | Tested |
@@ -362,7 +462,9 @@ The AWS deployment workflow will be tested again after the account restriction i
 - Add stronger deployment validation based on a version-controlled task definition template.
 - Automate deployment testing in an environment with an appropriate cost budget.
 - Add more advanced security checks and container-image scanning policies.
+- Test the server-error panel with an intentional HTTP 5xx response and evaluate local monitoring alert rules.
+- Consider production-grade metrics isolation, authentication, and automatic Grafana dashboard provisioning.
 
 ## What This Project Demonstrates
 
-CloudPipeline demonstrates practical experience with CI/CD pipelines, AWS infrastructure automation, Docker containers, federated authentication, IAM least privilege, ECS deployments, health monitoring, troubleshooting, automatic rollback, and cloud cost management.
+CloudPipeline demonstrates practical experience with CI/CD pipelines, AWS infrastructure automation, Docker containers, federated authentication, IAM least privilege, ECS deployments, health monitoring, Prometheus metrics, Grafana dashboards, dependency auditing, troubleshooting, automatic rollback, and cloud cost management.
