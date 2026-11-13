@@ -181,3 +181,15 @@ Simple definitions of the concepts used in this project.
 - **npm audit:** A command that checks Node.js dependencies for known security vulnerabilities.
 - **Dashboard Export:** A JSON configuration file used to preserve or recreate a Grafana dashboard.
 - **NaN:** A value meaning Not a Number, which can appear when a calculation is undefined.
+## Prometheus Alerting
+
+- **Alert Rule:** A PromQL condition that Prometheus evaluates to detect a problem.
+- **Alert Evaluation Interval:** How frequently Prometheus checks alert conditions.
+- **Inactive:** An alert state indicating its condition is not currently satisfied.
+- **Pending:** An alert state indicating its condition is satisfied but the required waiting period has not elapsed.
+- **Firing:** An alert state indicating its condition has remained satisfied long enough to activate the alert.
+- **`up` Metric:** A Prometheus metric that equals 1 when a scrape succeeds and 0 when it fails.
+- **Alert Threshold:** A condition or limit used to decide when an alert should activate.
+- **`for` Duration:** The time an alert condition must remain true before entering the Firing state.
+- **Alert Recovery:** The transition back to Inactive when the alert condition is no longer satisfied.
+- **promtool:** A Prometheus utility for validating configuration files, alert rules, and queries.

@@ -1,0 +1,11 @@
+groups:
+  - name: cloudpipeline-alerts
+    rules:
+      - alert: CloudPipelineAppDown
+        expr: up{job="cloudpipeline-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CloudPipeline application is down"
+          description: "Prometheus has been unable to scrape CloudPipeline for at least one minute."

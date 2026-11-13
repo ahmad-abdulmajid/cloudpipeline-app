@@ -953,7 +953,7 @@ Improve the reliability of the manual ECS deployment workflow without starting A
 
 ### Result and evidence
 - Local workflow validation completed successfully.
-- Deployment execution remains pending because AWS reported an account restriction.
+- The complete manual ECS deployment workflow was successfully verified on November 13, 2026. GitHub Actions authenticated using OIDC, built and pushed the Docker image to ECR, deployed the application to ECS Fargate, and passed the /health smoke test. Cleanup returned the ECS service to zero running tasks.
 - GitHub OIDC authentication was independently tested and passed.
 
 ### Problems and fixes (root cause)
@@ -1018,3 +1018,69 @@ Add application monitoring to CloudPipeline without creating additional AWS reso
 - The request-rate panel displayed HTTP traffic spikes.
 - The response-time panel displayed measurements around 0.4–0.5 milliseconds during testing.
 - The server-error panel displayed zero when no matching server-error
+
+## Milestone: End-to-End AWS ECS Deployment Verification
+
+**Date:** November 13, 2026
+
+### Goal
+Verify the complete GitHub Actions deployment workflow using AWS ECS Fargate, OIDC authentication, application health checks, and automatic cleanup.
+
+### Concepts (in my words)
+- **Authentication:** Verifies the identity accessing AWS.
+- **Authorization:** Determines which AWS actions that identity can perform.
+- **OIDC:** Allows GitHub Actions to obtain temporary AWS credentials without storing access keys.
+- **Smoke test:** Checks that a deployed application responds correctly.
+- **Desired count:** Defines how many application tasks an ECS service should maintain.
+
+### What I built
+- Configured a dedicated IAM operator with MFA and browser-based AWS CLI authentication.
+- Used temporary AWS CLI credentials instead of permanent access keys.
+- Applied narrowly scoped permissions for ECS service inspection.
+- Verified that GitHub Actions can assume the deployment role through OIDC.
+- Successfully executed the manual ECS deployment workflow.
+- Verified that the application passed its `/health` smoke test.
+- Confirmed that the ECS service returned to zero tasks after deployment.
+
+### Commands and code with reasons
+
+`aws login --profile cloudpipeline-operator --region eu-central-1` — Authenticate using temporary credentials.
+
+`aws sts get-caller-identity --profile cloudpipeline-operator` — Verify the active AWS identity.
+
+`aws ecs describe-services` — Inspect the ECS service and verify task counts.
+
+`aws ecs list-tasks` — Check for remaining running ECS tasks.
+
+`deploy-test.yml` — Automate image publishing, ECS deployment, health verification, and cleanup.
+
+### Result and evidence
+- GitHub OIDC authentication workflow: Passed.
+- Manual ECS deployment workflow: Passed.
+- ECS service: ACTIVE.
+- Desired tasks: 0.
+- Running tasks: 0.
+- Pending tasks: 0.
+- Remaining running ECS tasks: None.
+
+### Problems and fixes (root cause)
+- **IAM authorization failure:** The new operator lacked permission to inspect the ECS service. Attached a custom policy granting `ecs:DescribeServices` for the specific CloudPipeline service.
+- **Deployment cost risk:** Running Fargate tasks can incur charges. Used a manual deployment workflow with automatic cleanup and independent task-count verification.
+
+### Interview answer
+
+I built and verified a GitHub Actions deployment pipeline for a containerized Node.js application running on AWS ECS Fargate. GitHub Actions authenticates through OIDC, builds and publishes the Docker image to ECR, and updates the ECS service. The workflow waits for deployment stability and verifies the `/health` endpoint. After testing, it scales the service to zero tasks to reduce AWS costs.
+
+### Likely interview questions
+
+**Why OIDC instead of AWS access keys?**
+OIDC provides temporary AWS credentials and avoids storing permanent secrets in GitHub.
+
+**Why use a manual deployment trigger?**
+It allows controlled deployment testing without starting chargeable infrastructure on every push.
+
+**How did you verify cleanup?**
+I checked the ECS desired, running, and pending task counts and confirmed the running task list was empty.
+
+### What could go wrong?
+If a GitHub Actions runner is interrupted, automated cleanup might not complete. I would inspect the ECS service and manually scale it to zero if necessary.

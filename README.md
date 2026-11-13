@@ -16,8 +16,6 @@ When code is pushed to `main`, GitHub Actions automatically runs the dependency 
 
 AWS deployment is intentionally manual through `deploy-test.yml`. When triggered on `main`, the workflow authenticates using GitHub OIDC, pushes a commit-tagged image to Amazon ECR, registers a new ECS task definition revision, starts one Fargate task, verifies the deployed revision and `/health` response, and attempts to scale the service back to zero.
 
-The AWS OIDC authentication test has passed independently. The updated manual ECS deployment workflow is awaiting live verification because AWS reported an account-level restriction.
-
 To control AWS costs, the ECS service normally remains at a desired task count of zero. Fargate tasks are started only during manually triggered deployment tests and are scaled back to zero afterward. Cleanup is best-effort, with a documented manual recovery procedure available if automatic cleanup fails.
 
 ## Architecture
@@ -118,7 +116,7 @@ The workflow:
 
 Cleanup is best-effort. An interrupted runner or AWS service failure may require manual intervention, documented in [ECS Manual Recovery](docs/ECS-RECOVERY.md).
 
-**Verification status:** The updated manual ECS deployment workflow has not yet completed a live test because AWS reported an account-level restriction.
+The manual ECS deployment workflow was successfully verified on November 13, 2026. GitHub Actions authenticated through OIDC, published the application image to ECR, deployed it to ECS Fargate, and passed the application health check. Automated cleanup returned the ECS service to zero running tasks.
 
 ### 4. Manual AWS Authentication Test — `oidc-test.yml`
 
@@ -449,11 +447,7 @@ Additional references:
 | GitHub OIDC authentication | Passed |
 | Terraform-managed AWS infrastructure | Previously provisioned |
 | ECS circuit-breaker rollback | Demonstrated on October 23, 2026 |
-| Updated manual ECS deployment | Awaiting live verification |
-
-**AWS deployment limitation:** On November 5, 2026, Amazon ECS reported that the AWS account was blocked from placing tasks. AWS Health also reported a potential account security issue. The requested security remediation has been completed, and AWS Support's review is pending.
-
-The AWS deployment workflow will be tested again after the account restriction is lifted. No new AWS deployment is required to validate the Node.js or Kubernetes CI workflows.
+| Updated manual ECS deployment | Passed on November 13, 2026; health check and cleanup verified |
 
 ## Future Improvements
 
