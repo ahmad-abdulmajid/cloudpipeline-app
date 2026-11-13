@@ -1162,3 +1162,139 @@ They let me test alert conditions and recovery without deliberately breaking app
 ### What could go wrong?
 
 An alert threshold might be too sensitive and generate unnecessary warnings, or too high and fail to detect meaningful problems. Thresholds should be adjusted based on observed application behavior.
+
+## Milestone: Container Security Hardening with Trivy
+
+**Date:** November 13, 2026
+
+### Goal
+
+Improve CloudPipeline container security by scanning Docker images for vulnerabilities, minimizing unnecessary runtime software, and adding automated security scanning to CI.
+
+### Concepts (in my words)
+
+- **Vulnerability:** A known security weakness in software that attackers might exploit.
+- **Trivy:** A tool that scans container images for known vulnerabilities.
+- **Multi-stage Docker build:** A Dockerfile that separates dependency installation from the final runtime environment.
+- **Distroless image:** A minimal container image containing only essential runtime components.
+- **Attack surface:** The software and interfaces that could potentially be exploited.
+- **Security gate:** An automated check that can prevent a CI pipeline from succeeding when security requirements are not met.
+
+### What I built
+
+1. Scanned the original CloudPipeline Docker image using Trivy.
+2. Identified six HIGH vulnerabilities in npm's bundled `undici` and `brace-expansion` packages.
+3. Rebuilt the original image with updated base-image layers, but the vulnerabilities remained.
+4. Replaced the Dockerfile with a multi-stage build and distroless Node.js runtime.
+5. Configured the application to run directly with Node.js instead of npm.
+6. Confirmed that the new image runs as non-root user ID `65532`.
+7. Repeated the vulnerability scan and reduced detected HIGH vulnerabilities from six to zero.
+8. Updated the ECS task-definition health check from `CMD-SHELL` to `CMD`.
+9. Updated the GitHub Actions deployment workflow to preserve compatibility with the new runtime.
+10. Added Trivy scanning to the main CI workflow, failing CI on detected fixable HIGH or CRITICAL vulnerabilities.
+11. Verified that CloudPipeline CI and Kubernetes CI both passed.
+
+### Commands and code with reasons
+
+**Build the Docker image:**
+
+```bash
+docker build --pull -t cloudpipeline-app:security-scan .
+```
+
+Builds the current Dockerfile and checks for an updated base image.
+
+**Run the Trivy vulnerability scan:**
+
+```bash
+docker run --rm \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v trivy_cache:/root/.cache/ \
+  aquasec/trivy:0.76.2 image \
+  --image-src docker \
+  --scanners vuln \
+  --severity HIGH,CRITICAL \
+  --ignore-unfixed \
+  cloudpipeline-app:security-scan
+```
+
+Scans the locally built container image for HIGH and CRITICAL vulnerabilities that have available fixes.
+
+**Test the application health endpoint:**
+
+```bash
+curl -i http://127.0.0.1:3000/health
+```
+
+Confirms that the hardened container responds successfully.
+
+**Check the container user:**
+
+```bash
+docker inspect cloudpipeline-security-test \
+  --format '{{.Config.User}}'
+```
+
+Confirms that the container runs as a non-root user.
+
+**Validate Terraform:**
+
+```bash
+terraform fmt task.tf
+terraform validate
+```
+
+Formats and validates the ECS task-definition configuration.
+
+### Result and evidence
+
+- Original image: **6 HIGH, 0 CRITICAL** vulnerabilities.
+- Hardened image: **0 HIGH, 0 CRITICAL** vulnerabilities under the selected scan policy.
+- Application health endpoint: **HTTP 200 OK**.
+- Container user: **65532 (non-root)**.
+- Terraform validation: **Success**.
+- ECS health-check command: Successfully tested locally with exit code `0`.
+- GitHub Actions CloudPipeline CI #30: **Passed**.
+- GitHub Actions Kubernetes CI #10: **Passed**.
+
+### Problems and fixes (root cause)
+
+**Problem:** Six vulnerabilities remained after updating the original Node.js base image.
+
+**Root cause:** The base image contained vulnerable npm dependencies even though the application itself did not require npm at runtime.
+
+**Fix:** Introduced a multi-stage Docker build with a distroless final image.
+
+**Problem:** Existing ECS health check depended on a shell.
+
+**Root cause:** Distroless images do not include a shell.
+
+**Fix:** Replaced `CMD-SHELL` with `CMD` and executed `/nodejs/bin/node` directly. Verified the command locally and updated the deployment workflow.
+
+**Problem:** A Python command used to summarize Trivy results produced a syntax error.
+
+**Root cause:** Incorrect quotation escaping inside a Python f-string.
+
+**Fix:** Simplified the Python output statements and reran the scan successfully.
+
+### Interview answer
+
+I improved CloudPipeline's container security by integrating Trivy vulnerability scanning into GitHub Actions. The initial scan identified six HIGH vulnerabilities in npm packages bundled with the Node.js base image. I introduced a multi-stage Docker build with a distroless runtime, reducing the reported HIGH vulnerabilities to zero while retaining non-root execution. I also updated the ECS health check for distroless compatibility and verified the changes through local testing, Terraform validation, and successful GitHub Actions runs.
+
+### Likely interview questions
+
+**1. Why use a multi-stage Docker build?**
+
+To separate dependency installation from runtime execution and reduce unnecessary software in the final image.
+
+**2. Why didn't npm audit detect the six vulnerabilities?**
+
+The vulnerable packages were bundled with npm in the Docker base image rather than installed as application dependencies.
+
+**3. Why did you change CMD-SHELL to CMD?**
+
+Because distroless containers don't include a shell, so the health check must execute Node.js directly.
+
+### What could go wrong?
+
+A future base-image or dependency update could introduce new vulnerabilities. Automated Trivy scanning helps detect those findings, but regular review and patching are still necessary.

@@ -299,6 +299,34 @@ CloudPipeline implements several security practices:
 
 **Security tradeoff:** The demonstration uses a public subnet and public IP without a permanent Application Load Balancer. This reduces infrastructure cost and complexity but is not intended as a production-grade public networking architecture.
 
+### Container Security Hardening
+
+CloudPipeline uses a multi-stage Docker build with a distroless Node.js runtime to minimize unnecessary software in the production container.
+
+**Security measures:**
+- **Multi-stage Docker build:** Separates production dependency installation from the final runtime image.
+- **Distroless runtime:** Excludes npm, a shell, and other unnecessary runtime tools.
+- **Non-root execution:** Runs the application as user ID `65532`.
+- **Trivy scanning:** Checks Docker images for known HIGH and CRITICAL vulnerabilities.
+- **CI security gate:** GitHub Actions fails the CI job when Trivy detects vulnerabilities matching the configured policy.
+
+**Vulnerability scan results:**
+
+| Metric | Original image | Hardened image |
+|---|---|---|
+| HIGH vulnerabilities | 6 | 0 |
+| CRITICAL vulnerabilities | 0 | 0 |
+
+The six original findings were associated with `undici` and `brace-expansion` packages bundled with npm in the Node.js base image.
+
+The scan uses `--ignore-unfixed`, so the results represent vulnerabilities with available fixes, not every possible security risk.
+
+**Deployment compatibility:**
+
+The ECS container health check was updated from `CMD-SHELL` to `CMD`, allowing it to execute Node.js directly without requiring a shell.
+
+The hardened image and health-check command were tested locally. CloudPipeline CI and Kubernetes CI both passed. A live ECS deployment of the hardened image has not yet been verified.
+
 ## Infrastructure as Code
 
 Terraform provisions the infrastructure in the separate repository:

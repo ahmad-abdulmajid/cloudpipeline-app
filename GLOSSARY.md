@@ -193,3 +193,16 @@ Simple definitions of the concepts used in this project.
 - **`for` Duration:** The time an alert condition must remain true before entering the Firing state.
 - **Alert Recovery:** The transition back to Inactive when the alert condition is no longer satisfied.
 - **promtool:** A Prometheus utility for validating configuration files, alert rules, and queries.
+
+## Container Security
+
+- **Vulnerability:** A security weakness in software that an attacker might exploit.
+- **CVE (Common Vulnerabilities and Exposures):** A unique identifier assigned to a publicly disclosed security vulnerability.
+- **Trivy:** An open-source tool that scans container images and dependencies for known vulnerabilities.
+- **Container image scanning:** Examining a container image for vulnerable operating-system packages and application dependencies.
+- **Multi-stage Docker build:** A Docker build that separates application preparation from the final runtime image.
+- **Distroless image:** A minimal container image containing the application runtime without common tools such as a shell or package manager.
+- **Attack surface:** The collection of software components and interfaces that could potentially be exploited.
+- **Security gate:** An automated check that fails a CI job when specified security requirements are not met.
+- **Non-root container:** A container whose application processes run without root privileges.
+- **Image hardening:** Reducing a container image's security risks by removing unnecessary software and applying security improvements.
