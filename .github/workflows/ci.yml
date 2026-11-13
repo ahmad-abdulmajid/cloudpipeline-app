@@ -82,3 +82,16 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t cloudpipeline-app:${{ github.sha }} .
+
+      - name: Scan Docker image with Trivy
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v trivy_cache:/root/.cache/ \
+            aquasec/trivy:0.76.2 image \
+            --image-src docker \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --exit-code 1 \
+            cloudpipeline-app:${{ github.sha }}

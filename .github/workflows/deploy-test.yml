@@ -124,7 +124,13 @@ jobs:
               memory,
               runtimePlatform
             } | with_entries(select(.value != null)) |
-            .containerDefinitions[0].image = $IMAGE' \
+            .containerDefinitions[0].image = $IMAGE |
+            .containerDefinitions[0].healthCheck.command = [
+              "CMD",
+              "/nodejs/bin/node",
+              "-e",
+              "fetch(\"http://127.0.0.1:3000/health\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+            ]' \
             > task-definition-new.json
 
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \

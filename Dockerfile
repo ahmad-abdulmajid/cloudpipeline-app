@@ -1,14 +1,22 @@
-FROM node:24-bookworm-slim
+# Stage 1: Install production dependencies
+FROM node:24-bookworm-slim AS build
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY --chown=node:node app.js server.js metrics.js ./
+# Stage 2: Run the application without npm
+FROM gcr.io/distroless/nodejs24-debian13:nonroot
 
-USER node
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY --from=build --chown=nonroot:nonroot /app/node_modules ./node_modules
+
+COPY --chown=nonroot:nonroot app.js server.js metrics.js ./
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+CMD ["server.js"]
