@@ -199,8 +199,6 @@ The Express application uses `@prometheus-io/client` to collect:
 
 Prometheus scrapes `http://app:3000/metrics` every 15 seconds within the Docker Compose network. Grafana queries Prometheus using the internal service address `http://prometheus:9090`.
 
-### Monitoring dashboard
-
 The exported dashboard is version-controlled at [`monitoring/grafana/dashboards/cloudpipeline-dashboard.json`](monitoring/grafana/dashboards/cloudpipeline-dashboard.json). It includes three panels:
 
 | Panel | What it measures |
@@ -210,6 +208,32 @@ The exported dashboard is version-controlled at [`monitoring/grafana/dashboards/
 | HTTP Server Errors per Second | Frequency of HTTP 5xx responses; zero shown if no matching error series exists |
 
 An empty latency graph during inactivity may be normal because the average is undefined when no requests occur. The server-error panel has been configured and displays zero; a controlled 5xx failure test has not yet been documented.
+
+### Prometheus Alerting
+
+CloudPipeline includes two Prometheus alert rules to detect application availability and HTTP server errors.
+
+| Alert | Condition | Severity |
+|---|---|---|
+| `CloudPipelineAppDown` | Prometheus cannot scrape the application for at least one minute | Critical |
+| `CloudPipelineHigh5xxErrorRate` | HTTP 5xx error rate exceeds 0.05 errors per second for at least one minute | Warning |
+
+Prometheus evaluates both alert rules every 15 seconds.
+
+**Testing and verification:**
+- Verified the downtime alert by stopping the local application container and observing the transition to FIRING.
+- Restarted the application and confirmed the downtime alert returned to INACTIVE.
+- Used synthetic metrics to verify HTTP 5xx alert activation and recovery.
+- Added automated Prometheus configuration validation and alert behavior tests to GitHub Actions CI.
+
+**Configuration files:**
+- `monitoring/prometheus/rules/alerts.yml` — Alert definitions.
+- `monitoring/prometheus/rules/alerts.test.yml` — Synthetic alert tests.
+- `monitoring/prometheus/prometheus.yml` — Scraping and alert evaluation configuration.
+
+**View alerts:** Open `http://localhost:9090/alerts` while the local monitoring stack is running.
+
+Alert rules are evaluated locally by Prometheus. Email or external notification delivery has not yet been configured.
 
 ### Run locally
 
