@@ -71,6 +71,14 @@ jobs:
             --entrypoint promtool \
             prom/prometheus:v3.5.0 \
             check config /etc/prometheus/prometheus.yml
+      - name: Test Prometheus alert behavior
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/monitoring/prometheus/rules:/etc/prometheus/rules:ro" \
+            -w /etc/prometheus/rules \
+            --entrypoint promtool \
+            prom/prometheus:v3.5.0 \
+            test rules alerts.test.yml
 
       - name: Build Docker image
         run: docker build -t cloudpipeline-app:${{ github.sha }} .

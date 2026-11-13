@@ -1,0 +1,24 @@
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 15s
+
+tests:
+  - interval: 15s
+    input_series:
+      - series: 'http_requests_total{job="cloudpipeline-app",status_code="500",method="GET",route="/health"}'
+        values: '0+1x24 24+0x32'
+
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: CloudPipelineHigh5xxErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "CloudPipeline is returning frequent server errors"
+              description: "The application has averaged more than 0.05 HTTP 5xx errors per second for at least one minute."
+
+      - eval_time: 12m
+        alertname: CloudPipelineHigh5xxErrorRate
+        exp_alerts: []

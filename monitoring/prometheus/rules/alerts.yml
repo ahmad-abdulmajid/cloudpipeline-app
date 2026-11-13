@@ -9,3 +9,16 @@ groups:
         annotations:
           summary: "CloudPipeline application is down"
           description: "Prometheus has been unable to scrape CloudPipeline for at least one minute."
+
+      - alert: CloudPipelineHigh5xxErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="cloudpipeline-app",status_code=~"5.."}[5m]))
+            or vector(0)
+          ) > 0.05
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CloudPipeline is returning frequent server errors"
+          description: "The application has averaged more than 0.05 HTTP 5xx errors per second for at least one minute."

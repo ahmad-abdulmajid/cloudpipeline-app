@@ -1084,3 +1084,81 @@ I checked the ECS desired, running, and pending task counts and confirmed the ru
 
 ### What could go wrong?
 If a GitHub Actions runner is interrupted, automated cleanup might not complete. I would inspect the ECS service and manually scale it to zero if necessary.
+
+## Milestone: Prometheus Monitoring Alerts
+
+**Date:** November 13, 2026
+
+### Goal
+
+Extend CloudPipeline monitoring with automated detection of application downtime and high HTTP 5xx error rates, using local Docker containers without additional AWS infrastructure.
+
+### Concepts (in my words)
+
+- **Alert rule:** A PromQL condition evaluated automatically by Prometheus.
+- **Pending:** The alert condition is true, but the configured waiting period has not elapsed.
+- **Firing:** The alert condition has remained true long enough to activate the alert.
+- **Recovery:** The alert returns to inactive when the condition is no longer true.
+- **Synthetic testing:** Using simulated metrics to verify monitoring behavior without deliberately breaking the application.
+
+### What I built
+
+- Created `CloudPipelineAppDown` to detect failed Prometheus scrapes lasting at least one minute.
+- Created `CloudPipelineHigh5xxErrorRate` to detect HTTP 5xx error rates exceeding 0.05 errors per second for one minute.
+- Configured Prometheus to evaluate alerts every 15 seconds.
+- Tested downtime detection by stopping and restarting the local application container.
+- Created a synthetic Prometheus test that verifies both activation and recovery of the 5xx alert.
+- Updated GitHub Actions CI to validate Prometheus configuration and execute alert behavior tests.
+
+### Commands and code with reasons
+
+`docker compose -f compose.monitoring.yml stop app` — Simulate application downtime.
+
+`docker compose -f compose.monitoring.yml start app` — Restore the application and verify alert recovery.
+
+`up{job="cloudpipeline-app"}` — Check whether Prometheus can scrape the application.
+
+`promtool check config` — Validate Prometheus configuration and referenced alert rules.
+
+`promtool test rules` — Verify alert behavior against synthetic HTTP error metrics.
+
+`git diff --check` — Check changes for whitespace errors.
+
+`gitleaks detect --source . --no-git --redact` — Scan project files for potential exposed secrets.
+
+### Result and evidence
+
+- Downtime alert transitioned from INACTIVE to FIRING after sustained application downtime.
+- Downtime alert returned to INACTIVE after the application restarted.
+- HTTP 5xx alert successfully fired in a synthetic test.
+- HTTP 5xx alert recovery scenario was added to the synthetic test.
+- Prometheus configuration and rule syntax were validated.
+- Both alerts appeared in the Prometheus interface.
+
+### Problems and fixes (root cause)
+
+- **Docker Compose YAML error:** Duplicate `volumes` keys prevented configuration parsing. Consolidated the mounts into one block.
+- **Prometheus restart failure:** Docker Desktop could not reuse an existing WSL bind mount. Recreated the Prometheus container using Docker Compose without deleting its persistent data volume.
+- **CI not triggered by monitoring changes:** GitHub Actions path filters excluded monitoring configuration files. Extended the filters and added automated Prometheus validation.
+
+### Interview answer
+
+I extended CloudPipeline with Prometheus alerts for application downtime and HTTP server errors. I configured alert rules that evaluate metrics every 15 seconds and use a one-minute waiting period to reduce false alarms. I tested downtime detection using a controlled container stop and tested HTTP error conditions using synthetic metrics. I also integrated Prometheus configuration validation and alert behavior testing into GitHub Actions.
+
+### Likely interview questions
+
+**Why use a waiting period before firing an alert?**
+
+It prevents brief failures from triggering unnecessary alerts.
+
+**What's the difference between the two alerts?**
+
+The downtime alert detects failed Prometheus scrapes, while the 5xx alert detects frequent server errors even when the application is reachable.
+
+**Why use synthetic metrics?**
+
+They let me test alert conditions and recovery without deliberately breaking application code.
+
+### What could go wrong?
+
+An alert threshold might be too sensitive and generate unnecessary warnings, or too high and fail to detect meaningful problems. Thresholds should be adjusted based on observed application behavior.
